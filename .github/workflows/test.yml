@@ -1,0 +1,18 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      # Single-household and property tests only. National runs never run here.
+      - run: uv run pytest

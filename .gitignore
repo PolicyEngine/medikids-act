@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+
+# Result tables and run outputs stay out of the repository until publication is decided.
+results/
+outputs/
+logs/
+data/
+*.npz
+*.h5
