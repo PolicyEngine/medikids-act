@@ -28,16 +28,17 @@ How many people would leave private coverage for Medicaid is the largest unknown
 | Automatic enrollment at birth; eligibility continues to 26 | 2(b), 2(c) | Not modeled over time. The switching cases stand in for them. |
 | Screening benefits and no cost sharing to 26 | 2(h), 2(i) | Not modeled. |
 
-A person who is eligible only through the new group is "eligible only under (X)" for the premium tax credit rule. That includes people who meet an existing group's income test but fail its immigration test.
+The model treats a person who is eligible only through the new group as "eligible only under (X)" for the premium tax credit rule, including people who meet an existing group's income test but fail its immigration test. The bill's immigration amendments could be read to make those people eligible through the existing group as well. Few of them could claim the credit in 2029 either way: from 2027 the engine's credit excludes most of the immigration statuses that fail the Medicaid test.
 
 ## Effects that need nobody to choose
 
-Four things change on the day the group starts, whoever enrolls. Together they are the **floor** case.
+Five things change on the day the group starts, whoever enrolls. Together they are the **floor** case.
 
 1. **Separate CHIP empties under 19.** A "targeted low-income child" must be a child "not found to be eligible for medical assistance under" Medicaid (SSA 2110(b)(1)(C)), and States must enroll children found eligible for Medicaid in Medicaid (SSA 2102(b)(3)). Once every child is Medicaid-eligible, none can be covered by a separate CHIP program. This follows from existing CHIP law; the bill does not amend those sections. The estimate moves every modeled separate-CHIP enrollee under 26 to Medicaid on the start date, including pregnant enrollees under 26.
 2. **The Basic Health Program loses everyone under 26.** An eligible individual must be "not eligible to enroll in the State's medicaid program" (ACA 1331(e)(1)(A)), and the bill's premium tax credit rule does not reach that section. The estimate moves modeled Basic Health Program enrollees under 26 to Medicaid. Where they go is an assumption: they could instead buy Marketplace coverage with a credit.
 3. **Adults aged 19 to 25 who failed the community engagement requirement regain Medicaid**, at the take-up the dataset records for them. The engine applies that requirement to its adult category whatever funds the coverage, so this group includes some people in state-funded coverage.
 4. **State-funded coverage of people under 26 draws the federal match**, with no change in enrollment.
+5. **Enrollees under 26 with a federal match today whom the 2025 plan did not cover draw 100 percent**, with no change in enrollment: for example, people a state has added since January 1, 2025 by raising an income limit.
 
 ## Who draws the 100 percent match
 
@@ -45,7 +46,7 @@ New SSA 1905(ll) pays 100 percent for people eligible under the new group "who w
 
 The estimate reads this as the 2025 rules applied to a person's circumstances in the reporting year. The date attaches to the plan, and CMS ran the parallel December 2009 test for the ACA adult group the same way (42 CFR 433.206).
 
-The **lookback run** computes that test. It pins every parameter under the engine's Medicaid and CHIP eligibility folders, and the state Medicaid folders its formulas read, to its value on January 1, 2025, for the reporting year. Income limits are percentages of the poverty line, so pinning them applies the 2025 percentage to the 2029 poverty line. The pins undo, among others, the October 2026 narrowing of eligible immigration statuses and the 2027 community engagement requirement. A person is inside the 2025 plan if they have a Medicaid category under those rules, or are in California's former foster youth group, and meet the federal immigration test.
+The **lookback run** computes that test. It pins every parameter under the engine's Medicaid and CHIP eligibility folders, and under the state agency folders its Medicaid formulas read, to its value on January 1, 2025, for the reporting year. The state folders are pinned whole, so a few parameters outside Medicaid are pinned too (Missouri's state supplement amounts, for one). Income limits are percentages of the poverty line, so pinning them applies the 2025 percentage to the 2029 poverty line. The pins undo, among others, the October 2026 narrowing of eligible immigration statuses and the 2027 community engagement requirement. A person is inside the 2025 plan if they have a Medicaid category under those rules, or are in California's former foster youth group, and meet the federal immigration test.
 
 What follows:
 
@@ -103,8 +104,8 @@ The estimate reports five groups: Medicaid or CHIP (modeled Medicaid, modeled CH
 
 Three features of this classification matter for reading the results:
 
-- **Modeled enrollment comes first, because costs follow it.** The model assigns Medicaid enrollment to eligible people so that totals approach administrative counts, whatever each person reported. Some people who report being uninsured are enrolled in the model, and some who report Medicaid are not. The model's count of the uninsured is therefore lower than the survey's.
-- **Modeled separate CHIP is a residual.** The engine enrolls every child in the CHIP income band who reports no other coverage, and on records with the interview items it excludes children who report Medicaid or CHIP. The children the model moves from CHIP are the ones it enrolls, not necessarily the ones enrolled today.
+- **Modeled enrollment comes first, because costs follow it.** The model enrolls eligible people according to a take-up flag stored in the dataset, and modeled enrollment and reported coverage differ person by person. Some people who report being uninsured are enrolled in the model, and some who report Medicaid are not. The model's count of the uninsured is therefore lower than the survey's.
+- **Modeled separate CHIP is a residual.** The engine enrolls every child in the CHIP income band who reports no disqualifying coverage. On records with the interview items it excludes children who report Medicaid or CHIP; on records without them it cannot see that answer, so modeled CHIP falls mostly on those records. The children the floor moves from CHIP are the ones the model enrolls, most of whom report no coverage, not necessarily the ones enrolled today. A child who reports public coverage and whom the model does not enroll in Medicaid is in "reports Medicaid or CHIP", carries no cost at baseline, and is not moved by the floor.
 - **Reported coverage is at the interview, or for a prior year; modeled enrollment is for the reporting year.**
 
 ## Switching cases
@@ -122,14 +123,16 @@ Three features of this classification matter for reading the results:
 
 The chain `floor`, `uninsured`, `marketplace`, `employer_25`, `employer_50`, `everyone` is nested: each case contains the one before. `newborns` and `uninsured_wide` are side cases. The household draw is seeded and shared by a household's members.
 
+No case short of `everyone` enrolls people in "reports Medicaid or CHIP" or "other coverage" (apart from `uninsured_wide`, which adds the first). In `everyone` they appear as new enrollees at the full price.
+
 `uninsured_wide` exists because of the mismatch described above. People who report Medicaid but are not enrolled in the model have no coverage in the model's accounting. If they are in fact enrolled, their cost is already in the spending totals and `uninsured` is the right case. If the model is right that they are not, `uninsured_wide` is. The two bracket the cost of covering everyone the model does not show as covered.
 
-The dataset stores a Medicaid take-up flag for every person. For someone not eligible today it is a leftover draw, unrelated to their coverage, so the estimate ignores it for people eligible only through the new group: they enroll only if the case says so. People eligible through an existing group keep their stored flag, and a case can add them.
+The dataset stores a Medicaid take-up flag for every person. It was built for people eligible today, so the estimate does not use it for people eligible only through the new group: they enroll only if the case says so. People eligible through an existing group keep their stored flag, and a case can add them.
 
 The cases read two ways:
 
 - **First year.** Only children born after the start date are enrolled automatically, so the year starts near `floor` plus `newborns`, and every further case is people opting in.
-- **Steady state.** Once every child has been enrolled at birth and stays eligible to 26, everyone is enrolled unless they opt out, which the bill allows only with other coverage. `uninsured` is then the case in which everyone with private coverage has opted out, and `everyone` the case in which nobody has.
+- **Steady state.** Once every child has been enrolled at birth and stays eligible to 26, everyone is enrolled unless they opt out, which the bill allows only with other coverage. `uninsured` is then the case in which everyone with other coverage has opted out, and `everyone` the case in which nobody has. People who report Medicaid or CHIP but whom the model does not enroll have no other coverage to opt out with, so in the steady state they would be enrolled; `uninsured_wide` adds them.
 
 No case prices a child who is enrolled and keeps private coverage, with Medicaid paying second.
 
@@ -142,17 +145,17 @@ No case prices a child who is enrolled and keeps private coverage, with Medicaid
 
 Two adjustments apply:
 
-- *Growth.* The engine holds its state totals flat after fiscal 2023. They are grown by the increase CMS projects in Medicaid spending per enrollee from calendar 2024 to 2029 (National Health Expenditure projections 2025-2034, Table 17).
-- *Price base.* A person's price is their state's grown total, times their index, divided by the state's index-weighted enrollment in the lookback run at the dataset's 2024 weights. That holds the price per enrollee at the level the totals imply for the dataset's own year. The engine's default divides by baseline enrollment in the simulation year, which would raise every price when the 2027 community engagement requirement shrinks enrollment.
+- *Growth.* The engine holds its state totals flat after fiscal 2023. They are grown by the increase CMS projects in Medicaid spending per enrollee from calendar 2024 to 2029 (National Health Expenditure projections 2025-2034, Table 17). That series pools all enrollees. It rises steeply in 2024 and 2025 while enrollment falls after the pandemic unwinding, which suggests a change in who is enrolled more than in the cost of a given person, so it may overstate growth in the cost of a child. The year from fiscal 2023 to calendar 2024 is not grown.
+- *Price base.* A person's price is their state's grown total, times their index, divided by the state's index-weighted enrollment in the lookback run (2025 rules) at the dataset's 2024 weights. The engine's default divides by baseline enrollment in the simulation year, which would raise every price when the 2027 community engagement requirement shrinks enrollment. Either way the price rests on the model's own enrollment, which is below administrative counts; the benchmark comparison shows the gap.
 
 In states that rate premiums by family tier, the index is a share of a family premium, so a person's price moves when relatives enroll. The tables report that repricing of existing enrollees separately.
 
 **MACPAC group rates.** `medikids_group_rate` prices a person by age:
 
-- *Under 19:* the state's child-group spending per enrollee from the engine's parameters, rescaled so that the national average equals MACPAC's fiscal 2023 child benefit spending per full-year-equivalent enrollee (MACStats February 2026, Exhibit 22). The engine's parameters divide fiscal 2022 spending by people ever enrolled in the year, which understates the cost of a full year.
-- *19 to 25:* MACPAC's fiscal 2023 national rate for the "other adult" group, the group the engine assigns to young adults. The national rate is used because the engine's state figures for this group have gaps.
+- *Under 19:* the state's child-group spending per enrollee from the engine's parameters, rescaled so that the national average equals MACPAC's fiscal 2023 child benefit spending per full-year-equivalent enrollee, all enrollees ($4,040; MACStats February 2026, Exhibit 22). The engine's parameters divide fiscal 2022 spending by people ever enrolled in the year, which understates the cost of a full year. MACPAC's child group leaves out children who qualify through disability and Medicaid-expansion CHIP, and benefit spending leaves out administration and disproportionate share hospital payments.
+- *19 to 25:* MACPAC's fiscal 2023 national benefit spending per full-year-equivalent enrollee in the "other adult" group, all enrollees ($5,757). This is a choice, not the engine's grouping: the engine puts ACA adult-group members in its expansion-adult group. The national rate is used because the engine's state figures for this group have gaps. Two other MACPAC rates bracket the choice and are reported as sensitivities: the "other adult" rate for full-benefit enrollees ($6,817), which matches the bill's requirement that the new group receive full benefits, and the new adult group ($8,021). The "other adult" group is mostly parents, caretakers and pregnant people; the new adult group spans ages 19 to 64. MACPAC publishes no rate by age.
 
-Both rates grow from fiscal 2023 to 2029 at the average annual rate CBO projects for federal spending per enrollee in the matching category over fiscal 2025 to 2029 (February 2026 Medicaid baseline).
+Both rates grow from fiscal 2023 to 2029 at the average annual rate CBO projects for federal spending per enrollee in the matching category over fiscal 2025 to 2029 (February 2026 Medicaid baseline), applied over all six years. CBO's rate is per average monthly enrollee, including partial-benefit enrollees. Carrying it back over fiscal 2023 to 2025 leaves out the 2024 and 2025 rise that the CMS factor for the engine's allocation includes, so the two prices grow differently.
 
 The group rates rest on what Medicaid spends on children. Neither price is the cost of the children who would switch: privately insured children are healthier on average than children in Medicaid today.
 
