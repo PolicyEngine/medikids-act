@@ -9,7 +9,8 @@ group keep the dataset's take-up flag.
 Every case contains the floor: the people the bill moves with no choice of
 their own (see ``transfers``). The chain floor, uninsured, marketplace,
 employer_25, employer_50, everyone is nested, each case containing the one
-before. ``newborns`` sits between the floor and everyone.
+before. Two side cases sit outside the chain: ``newborns`` (between the floor
+and everyone) and ``uninsured_wide`` (between uninsured and everyone).
 
 Read for the first year, a case says who opts in. Read for the steady state,
 when every child has been enrolled at birth, the same case says who is left
@@ -21,16 +22,19 @@ from __future__ import annotations
 import numpy as np
 
 from medikids_act import assumptions as A
-from medikids_act.coverage import Coverage
+from medikids_act.coverage import Coverage, _household_draw
 
 CHAIN = ("floor", "uninsured", "marketplace", "employer_25", "employer_50", "everyone")
-CASES = ("floor", "newborns", *CHAIN[1:])
+SIDE_CASES = ("newborns", "uninsured_wide")
+CASES = ("floor", *SIDE_CASES, *CHAIN[1:])
 
 DESCRIPTIONS = {
     "floor": "Nobody chooses to enroll. Only the moves the law forces: separate-CHIP "
     "children and Basic Health Program enrollees under 26 move to Medicaid.",
     "newborns": "The floor, plus every child under 1 (automatic enrollment at birth).",
-    "uninsured": "The floor, plus everyone under 26 with no coverage.",
+    "uninsured": "The floor, plus everyone under 26 who is uninsured.",
+    "uninsured_wide": "As uninsured, plus people under 26 who report Medicaid or CHIP but "
+    "whom the model does not enroll: everyone the model does not show as covered.",
     "marketplace": "As above, plus everyone under 26 with Marketplace coverage.",
     "employer_25": "As above, plus the under-26 members of a random quarter of households "
     "with employer coverage.",
@@ -46,10 +50,7 @@ def household_draw(household_id: np.ndarray, seed: int = A.SWITCH_SEED) -> np.nd
     divided by the number of households, so the set of households below any
     threshold grows as the threshold rises.
     """
-    household_id = np.asarray(household_id)
-    unique, inverse = np.unique(household_id, return_inverse=True)
-    order = np.random.default_rng(seed).permutation(unique.size)
-    return (order / unique.size)[inverse]
+    return _household_draw(household_id, seed)
 
 
 def transfers(age: np.ndarray, coverage: np.ndarray) -> np.ndarray:
@@ -91,6 +92,8 @@ def case_enrolls(
     enrolls |= under_26 & (coverage == int(Coverage.UNINSURED))
     if case == "uninsured":
         return enrolls
+    if case == "uninsured_wide":
+        return enrolls | (under_26 & (coverage == int(Coverage.MEDICAID_REPORTED)))
     enrolls |= under_26 & (coverage == int(Coverage.MARKETPLACE))
     if case == "marketplace":
         return enrolls

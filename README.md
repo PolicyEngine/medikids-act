@@ -25,6 +25,8 @@ For one year, 2029 (the earliest the new group could start, if the bill were ena
 - the federal and state split under the bill's two match rates, with three points the bill's text leaves open shown as alternatives;
 - premium tax credits, separate-CHIP spending and Basic Health Program payments replaced.
 
+"Uninsured" here means uninsured at the survey interview and not enrolled in a public program in the model. The dataset records that survey answer on part of its sample only, so the rest is imputed at the measured rate. The method note explains this and why the model's count is lower than the survey's.
+
 ## What it leaves out
 
 - **How many people would switch.** The cases are assumptions, not predictions. The model has no behavioral take-up for people leaving private coverage.
@@ -55,12 +57,12 @@ uv sync
 uv run pytest
 ```
 
-The tests run single households and need no dataset. The national runs need the certified dataset (about 0.8 GB) at `data/releases/...` under the repository root; the pipeline stops, and says where the file belongs, if it is missing. Set `MEDIKIDS_ALLOW_DOWNLOAD=1` to let `policyengine` fetch it. Each national run takes one process; run them one at a time from the repository root:
+The tests run single households and need no dataset. They build several copies of the tax-benefit system and use about 4 GB of memory. The national runs need the certified dataset (about 0.8 GB) at `data/releases/...` under the repository root; the pipeline stops, and says where the file belongs, if it is missing. Set `MEDIKIDS_ALLOW_DOWNLOAD=1` to let `policyengine` fetch it. Each national run takes one process; run them one at a time from the repository root:
 
 ```bash
 uv run python -m medikids_act.pipeline lookback
 uv run python -m medikids_act.pipeline baseline
-uv run python -m medikids_act.pipeline case floor   # then newborns, uninsured, marketplace, employer_25, employer_50, everyone
+uv run python -m medikids_act.pipeline case floor   # then newborns, uninsured, uninsured_wide, marketplace, employer_25, employer_50, everyone
 uv run python -m medikids_act.pipeline checks
 uv run python -m medikids_act.pipeline tables
 ```

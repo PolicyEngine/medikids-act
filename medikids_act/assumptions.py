@@ -26,6 +26,12 @@ CHILD_AGE_LIMIT = 19
 # State plan or waiver "as in effect on January 1, 2025".
 LOOKBACK_DATE = "2025-01-01"
 
+# The ACA adult group, SSA 1902(a)(10)(A)(i)(VIII), reaches 133 percent of the
+# poverty line, 138 with the five-point income disregard. The expansion match
+# applies only to people described in that group, so a person a state covered
+# above this line under another authority draws the regular match.
+ADULT_GROUP_INCOME_LIMIT = 1.38
+
 # --- Growth in spending per enrollee -----------------------------------------
 #
 # The certified engine (policyengine-us 2.2.2) holds its Medicaid and CHIP
@@ -118,3 +124,7 @@ EMPLOYER_SWITCH_SHARES = (0.25, 0.50)
 # Seed for the household draw that picks which employer-covered households
 # switch in the partial cases.
 SWITCH_SEED = 5037
+
+# Seed for the household draw that imputes who is uninsured on records without
+# the survey's at-interview coverage items.
+UNINSURED_SEED = 2029

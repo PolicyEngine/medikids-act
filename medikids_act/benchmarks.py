@@ -57,6 +57,16 @@ BENCHMARKS = (
         "Enrollment Data, October 2026 release",
     ),
     Benchmark(
+        "medicaid_chip_total_enrollment",
+        79_154_413,
+        "people",
+        "December 2024",
+        "Everyone enrolled in Medicaid or CHIP, all ages, 50 states and DC, point in time, "
+        "comprehensive benefits",
+        "CMS, State Medicaid and CHIP Applications, Eligibility Determinations, and "
+        "Enrollment Data, October 2026 release",
+    ),
+    Benchmark(
         "chip_enrollment_total",
         7_326_747,
         "people",

@@ -65,10 +65,10 @@ def coverage_table(base: dict) -> pd.DataFrame:
     row("All people under 26", np.ones_like(under_26), "total")
     for member in Coverage:
         row(member.name, coverage == int(member), "class")
-    ihs_only = (coverage == int(Coverage.UNINSURED)) & base[
-        "has_indian_health_service_coverage_at_interview"
-    ]
-    row("Uninsured with Indian Health Service only", ihs_only, "memo")
+    uninsured = coverage == int(Coverage.UNINSURED)
+    row("Uninsured, measured at the interview", uninsured & base["coverage_measured"], "memo")
+    row("Uninsured, imputed at the measured rate", uninsured & base["coverage_imputed"], "memo")
+    row("People on records with the interview items", base["interview_items_present"], "memo")
     return pd.DataFrame(rows)
 
 
@@ -149,6 +149,10 @@ def cases_table(base: dict, runs: dict[str, dict]) -> pd.DataFrame:
             row[f"{pricing}_medicaid_change"] = gross
             row[f"{pricing}_medicaid_federal_change"] = federal
             row[f"{pricing}_medicaid_state_change"] = gross - federal
+        both = run["medicaid_enrolled"] & base["medicaid_enrolled"]
+        row["engine_repricing_of_existing_enrollees"] = weighted_sum(
+            run["medicaid_cost"], weights, both
+        ) - weighted_sum(base["medicaid_cost"], weights, both)
         row["chip_change"] = now["chip"] - at_base["chip"]
         row["chip_federal_change"] = now["chip_federal"] - at_base["chip_federal"]
         row["chip_state_change"] = now["chip_state"] - at_base["chip_state"]
@@ -225,29 +229,55 @@ def per_enrollee_table(base: dict, everyone: dict) -> pd.DataFrame:
 
 
 def floor_table(base: dict, floor: dict, look: dict) -> pd.DataFrame:
-    """What the floor case moves, by the reason for the move."""
+    """The floor's change in Medicaid cost, split over groups of people that partition it.
+
+    Every person is in exactly one row, so the rows sum to the floor's change
+    in the cases table for each pricing.
+    """
     age, weights, coverage = base["age"], base["person_weight"], base["coverage"]
     under_26 = age < A.AGE_LIMIT
-    new = floor["medicaid_enrolled"] & ~base["medicaid_enrolled"] & under_26
-    state_funded = base["medicaid_enrolled"] & under_26 & (base["medicaid_federal_share"] <= 0)
+    new = floor["medicaid_enrolled"] & ~base["medicaid_enrolled"]
+    both = floor["medicaid_enrolled"] & base["medicaid_enrolled"]
+    matched = base["medicaid_federal_share"] > 0
+    inside_plan = look["lookback_eligible"]
     groups = {
-        "Separate-CHIP enrollees moved to Medicaid": new & (coverage == int(Coverage.CHIP)),
-        "Basic Health Program enrollees moved to Medicaid": new
+        "New: separate-CHIP enrollees moved to Medicaid": new & (coverage == int(Coverage.CHIP)),
+        "New: Basic Health Program enrollees moved to Medicaid": new
         & (coverage == int(Coverage.BASIC_HEALTH)),
-        "Regain Medicaid through the community engagement exception": new
+        "New: regain Medicaid through the community engagement exception": new
         & ~np.isin(coverage, [int(Coverage.CHIP), int(Coverage.BASIC_HEALTH)]),
-        "Already enrolled in state-funded coverage (match moves to federal)": state_funded,
+        "Enrolled already, state-funded at baseline": both & under_26 & ~matched,
+        "Enrolled already, matched at baseline, outside the 2025 plan": both
+        & under_26
+        & matched
+        & ~inside_plan,
+        "Enrolled already, everyone else (repriced only in family-tier states)": both
+        & ~(under_26 & ~(matched & inside_plan)),
+        "Not enrolled in either run": ~floor["medicaid_enrolled"] & ~base["medicaid_enrolled"],
     }
+    covered = np.zeros(age.shape, dtype=int)
+    for mask in groups.values():
+        covered += mask
+    if not (covered == 1).all():
+        raise AssertionError("the floor's groups do not partition the population")
     rows = []
     for label, mask in groups.items():
-        row = {"row": label, "people": weighted_sum(mask, weights)}
+        row = {
+            "row": label,
+            "people": weighted_sum(mask, weights),
+            "people_outside_2025_plan": weighted_sum(mask & ~inside_plan, weights),
+        }
         for pricing, (cost, federal) in PRICINGS.items():
-            row[f"{pricing}_cost_under_bill"] = weighted_sum(floor[cost], weights, mask)
-            row[f"{pricing}_federal_under_bill"] = weighted_sum(floor[federal], weights, mask)
-            row[f"{pricing}_federal_at_baseline"] = weighted_sum(base[federal], weights, mask)
-        row["outside_2025_plan"] = weighted_sum(mask & ~look["lookback_eligible"], weights)
+            row[f"{pricing}_medicaid_change"] = weighted_sum(
+                floor[cost], weights, mask
+            ) - weighted_sum(base[cost], weights, mask)
+            row[f"{pricing}_medicaid_federal_change"] = weighted_sum(
+                floor[federal], weights, mask
+            ) - weighted_sum(base[federal], weights, mask)
         rows.append(row)
-    return pd.DataFrame(rows)
+    table = pd.DataFrame(rows)
+    total = {"row": "Total", **table.drop(columns="row").sum().to_dict()}
+    return pd.concat([table, pd.DataFrame([total])], ignore_index=True)
 
 
 def benchmark_table(base: dict, look: dict) -> pd.DataFrame:
@@ -275,6 +305,13 @@ def benchmark_table(base: dict, look: dict) -> pd.DataFrame:
             ),
             (
                 "Under 19 enrolled in Medicaid or eligible for separate CHIP under the "
+                "2025-01-01 rules, 2024 weights"
+            ),
+        ),
+        "medicaid_chip_total_enrollment": (
+            count(look["lookback_enrolled"] | look["lookback_separate_chip"], data_weights),
+            (
+                "People of all ages enrolled in Medicaid or eligible for separate CHIP under the "
                 "2025-01-01 rules, 2024 weights"
             ),
         ),
@@ -480,23 +517,32 @@ def render_summary(tables: dict[str, pd.DataFrame], meta: dict, checks: list | N
         )
     lines += [
         "",
-        "## What the floor case moves",
+        "## What the floor case moves ($ billions; rows sum to the floor's change)",
         "",
         (
-            "| | People (m) | Outside 2025 plan (m) | Group rate cost ($bn) | Federal under bill | "
-            "Federal at baseline | Engine cost ($bn) | Federal under bill | Federal at baseline |"
+            "| | People (m) | Outside 2025 plan (m) | Group rate: Medicaid | Federal | "
+            "Engine: Medicaid | Federal |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for _, r in tables["floor"].iterrows():
         lines.append(
-            f"| {r['row']} | {_millions(r['people'])} | {_millions(r['outside_2025_plan'])} | "
-            f"{_billions(r['group_rate_cost_under_bill'])} | "
-            f"{_billions(r['group_rate_federal_under_bill'])} | "
-            f"{_billions(r['group_rate_federal_at_baseline'])} | "
-            f"{_billions(r['engine_cost_under_bill'])} | {_billions(r['engine_federal_under_bill'])} | "
-            f"{_billions(r['engine_federal_at_baseline'])} |"
+            f"| {r['row']} | {_millions(r['people'])} | "
+            f"{_millions(r['people_outside_2025_plan'])} | "
+            f"{_billions(r['group_rate_medicaid_change'])} | "
+            f"{_billions(r['group_rate_medicaid_federal_change'])} | "
+            f"{_billions(r['engine_medicaid_change'])} | "
+            f"{_billions(r['engine_medicaid_federal_change'])} |"
         )
+    lines += [
+        "",
+        "Engine pricing: change in the cost of people enrolled in both runs "
+        "(family-tier repricing), $ billions: "
+        + "; ".join(
+            f"{r['case']} {_billions(r['engine_repricing_of_existing_enrollees'])}"
+            for _, r in cases.iterrows()
+        ),
+    ]
     lines += [
         "",
         "## Benchmarks",

@@ -38,7 +38,7 @@ Y = A.YEAR
 DATA_YEAR = 2024
 
 PERSON_BOOL = (
-    *COV.INPUTS,
+    *COV.ENGINE_INPUTS,
     COV.INDIAN_HEALTH_SERVICE,
     "is_medicaid_eligible",
     "medikids_existing_group_eligible",
@@ -47,6 +47,9 @@ PERSON_BOOL = (
     "is_chip_eligible",
     "is_basic_health_program_eligible",
     "pays_aca_premium",
+    # Inputs, read back so the checks can confirm they reached the run.
+    "medikids_lookback_eligible",
+    "medikids_lookback_adult_group",
 )
 PERSON_FLOAT = (
     "age",
@@ -61,6 +64,7 @@ PERSON_FLOAT = (
     "chip",
     "chip_federal_cost",
     "chip_state_cost",
+    "medicaid_slcsp_state_denominator",
 )
 PERSON_ENUM = ("state_code_str", "medicaid_category", "immigration_status")
 TAX_UNIT_FLOAT = ("assigned_aca_ptc", "aca_ptc", "basic_health_program")
@@ -78,6 +82,19 @@ def log(message: str) -> None:
     print(f"{stamp} {message} (peak rss {peak:.1f} GB)", flush=True)
 
 
+def code_version() -> str:
+    """The repository commit the run used, with a mark if the tree had uncommitted changes."""
+    import subprocess
+
+    def git(*args: str) -> str:
+        done = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+        return done.stdout.strip() if done.returncode == 0 else ""
+
+    commit = git("rev-parse", "HEAD") or "unknown"
+    dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    return commit + ("+uncommitted" if dirty else "")
+
+
 def provenance() -> dict:
     manifest_path = Path(
         metadata.distribution("policyengine").locate_file("policyengine/data/bundle/manifest.json")
@@ -90,6 +107,7 @@ def provenance() -> dict:
         "dataset": us["default_dataset"],
         "data_build": us["build_id"],
         "year": Y,
+        "code_version": code_version(),
     }
 
 
@@ -167,7 +185,7 @@ def _sum_by_state(values: np.ndarray, state: np.ndarray) -> dict[str, float]:
 
 def run_lookback(out: Path, dataset: str | None) -> None:
     """Eligibility under the rules in effect on 2025-01-01, and the price base."""
-    from medikids_act.reform import lookback_reform
+    from medikids_act.reform import lookback_inputs, lookback_reform
 
     sim = make_simulation(lookback_reform(), dataset)
     log("lookback simulation built")
@@ -176,6 +194,7 @@ def run_lookback(out: Path, dataset: str | None) -> None:
     eligible = _array(sim, "medikids_lookback_title_xix_eligible").astype(bool)
     category = _array(sim, "medicaid_category")
     enrolled = _array(sim, "medicaid_enrolled").astype(bool)
+    flags = lookback_inputs(eligible, category, _array(sim, "medicaid_income_level"))
     index = _array(sim, "medicaid_slcsp_cost_index_filled").astype(float)
     base_weight = _array(sim, "person_weight", DATA_YEAR).astype(float)
     # Per-enrollee prices rest on each state's spending total divided by the
@@ -190,8 +209,8 @@ def run_lookback(out: Path, dataset: str | None) -> None:
         out / "lookback.npz",
         state_code_str=state,
         age=age.astype(np.float32),
-        lookback_eligible=eligible,
-        lookback_adult_group=eligible & (category == "ADULT"),
+        lookback_eligible=flags["medikids_lookback_eligible"],
+        lookback_adult_group=flags["medikids_lookback_adult_group"],
         lookback_category=category,
         lookback_separate_chip=_array(sim, "is_chip_eligible").astype(bool),
         lookback_enrolled=enrolled,
@@ -238,9 +257,28 @@ def _collect(sim, extra_person_float=()) -> dict[str, np.ndarray]:
     arrays["person_weight"] = _array(sim, "person_weight").astype(np.float64)
     arrays["tax_unit_weight"] = _array(sim, "tax_unit_weight", entity=None).astype(np.float64)
     arrays["person_household_id"] = _array(sim, "person_household_id")
+    arrays["person_id"] = _array(sim, "person_id")
     arrays["person_tax_unit_id"] = _array(sim, "person_tax_unit_id")
     arrays["tax_unit_id"] = _array(sim, "tax_unit_id", entity=None)
     return arrays
+
+
+def read_survey_columns(dataset: str | None, person_id: np.ndarray) -> dict[str, np.ndarray]:
+    """Survey coverage items from the dataset's person table, in simulation order.
+
+    The engine has no variables for these columns, so they are read from the
+    same file the simulation runs on and matched on person id.
+    """
+    import pandas as pd
+
+    path = dataset or str(require_local_dataset())
+    with pd.HDFStore(path, mode="r") as store:
+        table = store.select("person", columns=["person_id", *COV.SURVEY_COLUMNS])
+    table = table.set_index("person_id")
+    if not table.index.is_unique or not np.isin(person_id, table.index).all():
+        raise ValueError("the simulation's people do not match the dataset's person table")
+    table = table.loc[person_id]
+    return {name: table[name].to_numpy() for name in COV.SURVEY_COLUMNS}
 
 
 def run_baseline(out: Path, dataset: str | None) -> None:
@@ -252,9 +290,22 @@ def run_baseline(out: Path, dataset: str | None) -> None:
     _apply_shared_inputs(sim, look)
     log("baseline simulation built")
     arrays = _collect(sim)
-    arrays["coverage"] = COV.classify(arrays)
+    arrays.update(COV.survey_inputs(read_survey_columns(dataset, arrays["person_id"])))
+    coverage, record = COV.classify(
+        arrays,
+        age=arrays["age"],
+        weights=arrays["person_weight"],
+        household_id=arrays["person_household_id"],
+    )
+    arrays["coverage"] = coverage
+    arrays["coverage_measured"] = record["measured"]
+    arrays["coverage_imputed"] = record["imputed"]
     np.savez_compressed(out / "baseline.npz", **arrays)
-    (out / "baseline.json").write_text(json.dumps(provenance() | {"stage": "baseline"}, indent=1))
+    meta = provenance() | {
+        "stage": "baseline",
+        "uninsured_rate_by_cell": record["uninsured_rate_by_cell"],
+    }
+    (out / "baseline.json").write_text(json.dumps(meta, indent=1))
     log("baseline written")
 
 

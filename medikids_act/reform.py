@@ -172,6 +172,18 @@ def _regular_fmap(person, period, parameters):
     return parameters(period).gov.hhs.medicaid.cost_share.fmap[state]
 
 
+def _matched_under_current_law(person, period):
+    """Whether federal matching funds pay for this person under current law.
+
+    A Medicaid category, or California's former foster youth group (a title XIX
+    group that the engine keeps outside its categories), together with the
+    federal immigration test.
+    """
+    category = person("medicaid_category", period)
+    in_group = (category != category.possible_values.NONE) | person("ca_ffyp_eligible", period)
+    return in_group & person("medikids_federal_immigration_eligible", period)
+
+
 def _current_law_share(person, period, parameters):
     """Federal share under current law, with state-funded coverage at zero.
 
@@ -179,16 +191,14 @@ def _current_law_share(person, period, parameters):
     Medicaid category, including people who pass the immigration test only
     through a state-funded route. Federal law pays nothing for them
     (42 U.S.C. 1396b(v)), so this sets their share to zero, as later
-    policyengine-us versions do.
+    policyengine-us versions do. It also gives the regular match to former
+    foster youth, whom the engine leaves at zero.
     """
     category = person("medicaid_category", period)
-    categories = category.possible_values
-    matched = (category != categories.NONE) & person(
-        "medikids_federal_immigration_eligible", period
-    )
+    matched = _matched_under_current_law(person, period)
     expansion_fmap = parameters(period).gov.hhs.medicaid.cost_share.expansion_fmap
     return select(
-        [~matched, category == categories.ADULT],
+        [~matched, category == category.possible_values.ADULT],
         [0, expansion_fmap],
         default=_regular_fmap(person, period, parameters),
     )
@@ -199,15 +209,19 @@ def _current_law_share(person, period, parameters):
 #
 # primary
 #     People under 26 who would not have been eligible under the State plan as
-#     in effect on 2025-01-01 draw 100 percent (new SSA 1905(ll)). The rest
-#     draw the rate current law gives their 2025 group: the expansion rate for
-#     the ACA adult group, the state's regular rate otherwise.
+#     in effect on 2025-01-01 draw 100 percent (new SSA 1905(ll)). Everyone
+#     else under 26 draws what current law gives them: the rate of their
+#     current group if they have one, otherwise the rate of the group they
+#     would have been in under the 2025 rules (the expansion rate for the ACA
+#     adult group, the state's regular rate otherwise).
 # strict_v5
 #     The bill does not amend SSA 1903(v)(5), which from October 2026 bars
 #     federal payment for anyone but citizens, lawful permanent residents,
 #     Cuban and Haitian entrants and Compact of Free Association residents. On
 #     the strict reading States must cover everyone else under 26 with no
-#     federal payment.
+#     federal payment. The engine cannot apply that paragraph's exceptions
+#     (emergency care, and the State option for lawfully residing children),
+#     so this reading overstates the loss of federal payment.
 # adult_group_100
 #     The 1905(ll) test names "full benefits" only. If the ACA adult group's
 #     benchmark coverage does not count as full benefits, its members aged 19
@@ -224,13 +238,23 @@ def _bill_share(person, period, parameters, reading="primary"):
     current = _current_law_share(person, period, parameters)
     regular = _regular_fmap(person, period, parameters)
     expansion_fmap = parameters(period).gov.hhs.medicaid.cost_share.expansion_fmap
-    lookback = person("medikids_lookback_eligible", period)
-    adult_group = person("medikids_lookback_adult_group", period)
-    adult_rate = {
-        "adult_group_100": 1.0,
-        "adult_group_regular": regular,
-    }.get(reading, expansion_fmap)
-    under_bill = select([~lookback, adult_group], [1.0, adult_rate], default=regular)
+    inside_2025_plan = person("medikids_lookback_eligible", period)
+    category = person("medicaid_category", period)
+    # A person with a matched group today keeps that group's rate: the bill
+    # does not move anyone between existing groups. The 2025 group matters only
+    # for people current law has since cut off.
+    matched_now = _matched_under_current_law(person, period)
+    in_adult_group = where(
+        matched_now,
+        category == category.possible_values.ADULT,
+        person("medikids_lookback_adult_group", period),
+    )
+    rate = where(matched_now, current, where(in_adult_group, expansion_fmap, regular))
+    if reading == "adult_group_100":
+        rate = where(in_adult_group, 1.0, rate)
+    elif reading == "adult_group_regular":
+        rate = where(in_adult_group, regular, rate)
+    under_bill = where(inside_2025_plan, rate, 1.0)
     if reading == "strict_v5":
         paid = person("medikids_federal_immigration_eligible", period)
         under_bill = where(paid, under_bill, 0)
@@ -553,6 +577,24 @@ class medikids_lookback_title_xix_eligible(Variable):
         in_category = category != category.possible_values.NONE
         federal = person("medikids_federal_immigration_eligible", period)
         return (in_category | person("ca_ffyp_eligible", period)) & federal
+
+
+def lookback_inputs(eligible, category, income_level) -> dict[str, np.ndarray]:
+    """The two inputs the bill's match rates read, from the lookback run's outputs.
+
+    ``eligible`` is ``medikids_lookback_title_xix_eligible``, ``category`` the
+    Medicaid category names and ``income_level`` ``medicaid_income_level``,
+    all from a simulation under ``lookback_reform``. A person counts as in the
+    ACA adult group only up to that group's income limit: the expansion match
+    does not reach people a state covered above it.
+    """
+    eligible = np.asarray(eligible, dtype=bool)
+    in_adult_category = np.asarray(category).astype(str) == "ADULT"
+    in_income_range = np.asarray(income_level, dtype=float) <= A.ADULT_GROUP_INCOME_LIMIT
+    return {
+        "medikids_lookback_eligible": eligible,
+        "medikids_lookback_adult_group": eligible & in_adult_category & in_income_range,
+    }
 
 
 def lookback_reform() -> type[Reform]:
