@@ -289,11 +289,15 @@ def check_case(report: Report, case: str, run: dict, base: dict, look: dict) -> 
     inside_plan = look["lookback_eligible"]
     _inputs_reached(report, case, run, look)
 
+    # Input agreement only: this compares the array the pipeline passed to the engine (and
+    # saved) with the mask recomputed here. That the engine acted on it is shown by the
+    # enrollment checks below, which read the engine's own medicaid_enrolled.
     expected = C.case_enrolls(
         case, age=base["age"], coverage=base["coverage"], household_id=base["person_household_id"]
     )
     report.add(
-        f"{case}: the run used the case's enrollment set",
+        f"{case}: input agreement: the enrollment input saved with the run equals the case's "
+        "mask recomputed from the baseline arrays",
         np.array_equal(run["case_enrolls"], expected),
         f"{int((run['case_enrolls'] != expected).sum())} people differ",
     )
@@ -424,7 +428,8 @@ def check_no_marketplace_switch(report: Report, case: str, run: dict, base: dict
     )
     changed = int((run["person_receives_aca"] != base["person_receives_aca"]).sum())
     report.add(
-        f"{case}: subsidized Marketplace enrollment equals the baseline for every person",
+        f"{case}: the engine's subsidy flag (person_receives_aca) equals the baseline for "
+        "every person",
         changed == 0,
         f"{changed} people changed",
     )
@@ -433,7 +438,8 @@ def check_no_marketplace_switch(report: Report, case: str, run: dict, base: dict
 def check_floor(report: Report, floor: dict, base: dict, look: dict) -> None:
     changed = int((floor["pays_aca_premium"] != base["pays_aca_premium"]).sum())
     report.add(
-        "floor: Marketplace eligibility equals the baseline for every person",
+        "floor: the engine's premium-payment flag (pays_aca_premium) equals the baseline for "
+        "every person",
         changed == 0,
         f"{changed} people changed",
     )

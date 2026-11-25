@@ -692,7 +692,33 @@ def render_summary(tables: dict[str, pd.DataFrame], meta: dict, checks: list | N
     return "\n".join(lines) + "\n"
 
 
+def summary_problem(out: Path) -> str | None:
+    """Why the summary may not be written from ``out``, or None if it may.
+
+    It needs a checks.json with no failed row that is at least as new as every
+    stage output (the .npz arrays and the stage records).
+    """
+    checks_path = out / "checks.json"
+    if not checks_path.exists():
+        return "no checks.json; run the checks stage first"
+    failed = [c for c in json.loads(checks_path.read_text()) if not c["passed"]]
+    if failed:
+        return f"{len(failed)} saved checks failed"
+    stage_files = [*out.glob("*.npz"), *out.glob("lookback.json"), *out.glob("baseline.json"),
+                   *out.glob("case_*.json")]
+    if any(path.stat().st_mtime > checks_path.stat().st_mtime for path in stage_files):
+        return "checks.json is older than a stage output; rerun the checks stage"
+    return None
+
+
 def write_tables(out: Path) -> None:
+    """Write every table, and the summary only when every saved check passed.
+
+    The tables are written either way, for inspection. The summary, the text a
+    reader quotes, needs a checks.json with no failures that is newer than every
+    stage output; otherwise it is not written (an old one is removed) and the
+    stage exits with status 1.
+    """
     look, base = load(out, "lookback"), load(out, "baseline")
     runs = {c: load(out, f"case_{c}") for c in C.CASES if (out / f"case_{c}.npz").exists()}
     tables = {
@@ -711,8 +737,13 @@ def write_tables(out: Path) -> None:
     for name, table in tables.items():
         table.to_csv(out / f"table_{name}.csv", index=False)
     meta = json.loads((out / "baseline.json").read_text())
-    checks_path = out / "checks.json"
-    checks = json.loads(checks_path.read_text()) if checks_path.exists() else None
-    if {"per_enrollee", "floor"} <= tables.keys():
-        (out / "summary.md").write_text(render_summary(tables, meta, checks))
     print(f"wrote {len(tables)} tables to {out}")
+    summary = out / "summary.md"
+    problem = summary_problem(out)
+    if problem is not None:
+        summary.unlink(missing_ok=True)
+        print(f"summary not written: {problem}")
+        raise SystemExit(1)
+    if {"per_enrollee", "floor"} <= tables.keys():
+        checks = json.loads((out / "checks.json").read_text())
+        summary.write_text(render_summary(tables, meta, checks))

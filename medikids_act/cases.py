@@ -6,8 +6,10 @@ under 26. Everyone in the set enrolls. People outside it who are eligible only
 through the new group stay as they are; people eligible through an existing
 group keep the dataset's take-up flag.
 
-Every case contains the floor: the people the bill moves with no choice of
-their own (see ``transfers``). The chain floor, uninsured, marketplace,
+Every case contains the floor, the modeled transitions (see ``transfers``).
+Existing CHIP law moves ordinary separate-CHIP children found eligible for
+Medicaid; the timing of that move, the take-up of Basic Health Program
+enrollees and the move of CHIP pregnancy coverage are modeling assumptions. The chain floor, uninsured, marketplace,
 employer_25, employer_50, everyone is nested, each case containing the one
 before. Two side cases sit outside the chain: ``newborns`` (between the floor
 and everyone) and ``uninsured_wide`` (between uninsured and everyone).
@@ -29,14 +31,16 @@ SIDE_CASES = ("newborns", "uninsured_wide")
 CASES = ("floor", *SIDE_CASES, *CHAIN[1:])
 
 DESCRIPTIONS = {
-    "floor": "Nobody chooses to enroll. Modeled transitions only: separate-CHIP and Basic "
-    "Health Program enrollees under 26 move to Medicaid on the start date, and people under 26 "
-    "barred by the community engagement requirement regain Medicaid at their stored take-up.",
+    "floor": "Modeled transitions only: separate-CHIP enrollees under 26 (children and "
+    "pregnancy coverage) and Basic Health Program enrollees under 26 are assumed to move to "
+    "Medicaid on the start date, and people under 26 barred by the community engagement "
+    "requirement regain Medicaid at their stored take-up.",
     "newborns": "The floor, plus every child under 1, each for a full year (an annualized "
     "illustration of enrollment at birth, not the first year's cost).",
     "uninsured": "The floor, plus everyone under 26 who is uninsured.",
     "uninsured_wide": "As uninsured, plus people under 26 who report Medicaid or CHIP but "
-    "whom the model does not enroll: everyone the model does not show as covered.",
+    "whom the model does not enroll (an enrollment sensitivity: many reported it only for "
+    "the prior year, so their current coverage is unknown).",
     "marketplace": "As uninsured, plus everyone under 26 in the Marketplace class.",
     "employer_25": "As marketplace, plus people under 26 in the employer class who live in a "
     "random quarter of all households.",
@@ -57,13 +61,17 @@ def household_draw(household_id: np.ndarray, seed: int = A.SWITCH_SEED) -> np.nd
 
 
 def transfers(age: np.ndarray, coverage: np.ndarray) -> np.ndarray:
-    """People the bill moves to Medicaid whether or not anyone chooses to enroll.
+    """People the floor moves to Medicaid: modeled transitions, partly assumed.
 
     A child eligible for Medicaid cannot be a "targeted low-income child" for
     separate CHIP (SSA 2110(b)(1)(C)), and a person eligible to enroll in
     Medicaid is not an eligible individual for the Basic Health Program
-    (ACA 1331(e)(1)). Both programs lose everyone under 26 the day the new
-    group starts, and the estimate moves them to Medicaid.
+    (ACA 1331(e)(1)). So both programs lose their eligibility under 26 once
+    the new group starts. The estimate moves every such enrollee to Medicaid
+    on the start date: for ordinary separate-CHIP children the move follows
+    from existing CHIP law (its timing is assumed); for Basic Health Program
+    enrollees and CHIP pregnancy coverage, including the from-conception
+    option whose beneficiary is the unborn child, the move is assumed.
     """
     age = np.asarray(age)
     coverage = np.asarray(coverage)

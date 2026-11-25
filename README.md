@@ -7,10 +7,10 @@
 S. 5037 (Sen. Andy Kim, introduced July 2026) adds a mandatory Medicaid eligibility group for everyone under 26, with no income test, starting two years after enactment. Read from the bill text the sponsor released in July 2026 ([S. 5037 on congress.gov](https://www.congress.gov/bill/119th-congress/senate-bill/5037)), it also:
 
 - enrolls children automatically at birth, with an opt-out only for children who have other coverage;
-- keeps anyone found eligible under 26 eligible until they turn 26;
+- keeps anyone found eligible under 26 eligible until they turn 26 or stop residing in the State, with no income redeterminations;
 - drops the immigration-status test under 26;
 - pays a 100 percent federal match only for people who would not have been eligible for full benefits under the State plan, or a waiver of it, as it stood on January 1, 2025, and the usual match for everyone else;
-- lets people keep premium tax credits unless they enroll;
+- keeps the premium tax credit open to people whose only Medicaid eligibility is the new group, unless they enroll (the credit's other rules still apply);
 - excepts everyone under 26 from the community engagement (work) requirements enacted in 2025.
 
 The bill raises no revenue.
@@ -21,7 +21,7 @@ For one year, 2029, an assumed reporting year with the new group in force all ye
 
 - people under 26 by current coverage: Medicaid or CHIP, employer, Marketplace, other, uninsured;
 - how many become newly eligible, and how many fall outside the 2025 State plan and so would draw the 100 percent match under the primary reading;
-- the gross Medicaid cost under stated switching cases, from "nobody chooses to enroll" to "everyone under 26 enrolls", priced two ways;
+- the gross Medicaid cost under stated switching cases, from a floor of modeled transitions to "everyone under 26 enrolls", priced two ways;
 - the federal and state split under the bill's two match rates, with three points the bill's text leaves open shown as alternatives;
 - premium tax credits, separate-CHIP spending and Basic Health Program payments replaced.
 

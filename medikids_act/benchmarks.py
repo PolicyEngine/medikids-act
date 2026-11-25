@@ -192,9 +192,13 @@ BENCHMARKS = (
         313_549,
         "people",
         "2026 open enrollment",
-        "Basic Health Program enrollment under 26 in Minnesota, Oregon, DC and New York's "
-        "Essential Plan",
-        "CMS, 2026 Marketplace Open Enrollment Period State-Level Public Use File",
+        "Enrollment under 26 reported in the file's Basic Health Program fields: the Basic "
+        "Health Programs of Minnesota, Oregon and DC, plus 289,860 in New York's Essential Plan "
+        "Expansion, a section 1332 waiver program that is not a Basic Health Program but is "
+        "reported in those fields (waiver ended July 1, 2026); a mixed comparator, so no ratio "
+        "is meaningful",
+        "CMS, 2026 Marketplace Open Enrollment Period State-Level Public Use File and its FAQs "
+        "(What is a BHP Plan?)",
     ),
 )
 

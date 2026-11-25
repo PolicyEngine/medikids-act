@@ -114,7 +114,10 @@ def test_enrolling_takes_a_child_out_of_the_marketplace(current_law, bill_everyo
         ("ca_adult.adult", EXPANSION, EXPANSION, FULL, REGULAR),
         ("ny_refugee.adult", EXPANSION, NONE, FULL, REGULAR),
         # In the adult group today although her 2025 group was the parent group:
-        # the bill moves nobody between existing groups.
+        # the bill moves nobody between existing groups. The two adult-group
+        # readings are mechanical overrides keyed to current membership, so she
+        # draws 100 percent under adult_group_100 even though her 2025 group gave
+        # full benefits; a historical-pathway version would keep the expansion match.
         ("va_parent.parent", EXPANSION, EXPANSION, FULL, REGULAR),
         # Inside the 2025 plan above the adult group's income limit: never the expansion match.
         ("dc_adult.adult", REGULAR, REGULAR, REGULAR, REGULAR),

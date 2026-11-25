@@ -258,11 +258,20 @@ def _current_law_share(person, period, parameters):
 # adult_group_100
 #     The 1905(ll) test names "full benefits" only. If the ACA adult group's
 #     benchmark coverage does not count as full benefits, its members aged 19
-#     to 25 draw 100 percent.
+#     to 25 draw 100 percent. As implemented this is a mechanical rate
+#     override: it keys on the adult-group flag used below (current membership
+#     for a person matched today, the 2025 group otherwise) and does not test
+#     whether the person had another full-benefit pathway under the 2025 rules.
+#     A person in the adult group today whose 2025 group gave full benefits
+#     (the Virginia parent fixture) gets 100 percent here although that reading
+#     of the bill would keep her current rate. The engine assigns one category
+#     per person, so overlaps between the adult group and other groups cannot
+#     be seen.
 # adult_group_regular
 #     If States must enroll those members under the new group instead of the
 #     adult group, the expansion rate no longer reaches them and they draw the
-#     state's regular rate.
+#     state's regular rate. It uses the same adult-group flag, with the same
+#     limit.
 READINGS = ("primary", "strict_v5", "adult_group_100", "adult_group_regular")
 
 
