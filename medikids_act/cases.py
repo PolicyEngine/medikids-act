@@ -12,9 +12,9 @@ employer_25, employer_50, everyone is nested, each case containing the one
 before. Two side cases sit outside the chain: ``newborns`` (between the floor
 and everyone) and ``uninsured_wide`` (between uninsured and everyone).
 
-Read for the first year, a case says who opts in. Read for the steady state,
-when every child has been enrolled at birth, the same case says who is left
-after the rest have opted out.
+The cases are enrollment scenarios, not a timeline and not bounds on a later
+year: automatic enrollment, applications and written opt-outs over time are
+not modeled.
 """
 
 from __future__ import annotations
@@ -37,10 +37,11 @@ DESCRIPTIONS = {
     "uninsured": "The floor, plus everyone under 26 who is uninsured.",
     "uninsured_wide": "As uninsured, plus people under 26 who report Medicaid or CHIP but "
     "whom the model does not enroll: everyone the model does not show as covered.",
-    "marketplace": "As above, plus everyone under 26 with Marketplace coverage.",
-    "employer_25": "As above, plus people under 26 in the employer class who live in a random "
-    "quarter of households.",
-    "employer_50": "As above, with half of households.",
+    "marketplace": "As uninsured, plus everyone under 26 in the Marketplace class.",
+    "employer_25": "As marketplace, plus people under 26 in the employer class who live in a "
+    "random quarter of all households.",
+    "employer_50": "As marketplace, plus people under 26 in the employer class who live in a "
+    "random half of all households.",
     "everyone": "Everyone under 26 enrolls.",
 }
 

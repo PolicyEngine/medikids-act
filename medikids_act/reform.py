@@ -164,7 +164,10 @@ class medikids_in_aca_adult_group(Variable):
         "poverty line through a section 1115 waiver, which the engine also puts in its "
         "ADULT category (income limit 100 percent of the poverty line); those adults are "
         "matched at the state's regular rate. A state whose adult income limit is below "
-        "the ACA group's 138 percent is therefore treated as covering adults by waiver."
+        "the ACA group's 138 percent is therefore treated as covering adults by waiver. The "
+        "variable applies no income cap of its own: in the reporting year no state's adult "
+        "limit exceeds 138 percent (a check confirms it), and the lookback caps the group at "
+        "138 percent in lookback_inputs, because DC's 2025 limit was higher."
     )
     reference = (
         "https://www.law.cornell.edu/uscode/text/42/1396d#y",
@@ -565,6 +568,12 @@ def medikids_reform() -> type[Reform]:
     return medikids
 
 
+# Filled by the lookback reform each time it is applied: the parameters with no
+# value dated on or before the lookback date, which are left alone. The
+# lookback stage records them in its provenance file.
+SKIPPED_AT_LOOKBACK: list[str] = []
+
+
 def pin_to_lookback_date(parameters) -> list[str]:
     """Pin Medicaid and CHIP eligibility parameters to their 2025-01-01 values.
 
@@ -643,7 +652,7 @@ def lookback_reform() -> type[Reform]:
             self.update_variable(medikids_in_aca_adult_group)
 
             def pin(parameters):
-                pin_to_lookback_date(parameters)
+                SKIPPED_AT_LOOKBACK[:] = pin_to_lookback_date(parameters)
                 return parameters
 
             self.modify_parameters(pin)

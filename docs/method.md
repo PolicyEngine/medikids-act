@@ -12,7 +12,7 @@ How many people would leave private coverage for Medicaid is the largest unknown
 
 - `policyengine` 6.20.3, which pins `policyengine-us` 2.2.2 and `policyengine-core` 3.34.10.
 - The certified Microcosm dataset `populace_us_2024` (build `populace-us-2024-spm-20260915`), a 2024 file that the engine ages to 2029.
-- Every scenario is a full microsimulation through `policyengine.us.managed_microsimulation`, with a structural reform defined in [`medikids_act/reform.py`](../medikids_act/reform.py). No figure is scaled, interpolated or extrapolated from another scenario's run.
+- Every scenario is a full microsimulation through `policyengine.us.managed_microsimulation`, with a structural reform defined in [`medikids_act/reform.py`](../medikids_act/reform.py). No figure is interpolated or extrapolated from another scenario's run. The one rescaling is the 19-to-25 rate sensitivity, which rescales that age group's part of a case's change exactly, because the rate is one national figure.
 
 `policyengine-us` has changed its Medicaid rules since version 2.2.2. The estimate uses the certified version because it is the one the certified dataset is paired with.
 
@@ -34,7 +34,7 @@ The model treats a person who is eligible only through the new group as "eligibl
 
 The **floor** case models five transitions that happen whoever chooses to enroll. Some follow from law; others rest on assumptions about timing and take-up, stated with each. The floor is the modeled set of these transitions, not a lower bound on cost.
 
-1. **Separate CHIP empties under 19.** A "targeted low-income child" must be a child "not found to be eligible for medical assistance under" Medicaid (SSA 2110(b)(1)(C)), and States must enroll children found eligible for Medicaid in Medicaid (SSA 2102(b)(3)). Once every child is Medicaid-eligible, none can be covered by a separate CHIP program. This follows from existing CHIP law; the bill does not amend those sections. The estimate moves every modeled separate-CHIP enrollee under 26 to Medicaid on the start date. That timing is an assumption: States could move current enrollees at their next renewal. Pregnant CHIP enrollees under 26 move too, because the engine ends their CHIP coverage once they are Medicaid-eligible. That includes the CHIP option that covers a pregnancy from conception, whose beneficiary is the unborn child, so moving those enrollees is the engine's reading rather than one the CHIP statute settles. The tables report the pregnancy pathways separately from children.
+1. **Separate CHIP empties under 19.** A "targeted low-income child" must be a child "not found to be eligible for medical assistance under" Medicaid (SSA 2110(b)(1)(C)), and States must enroll children found eligible for Medicaid in Medicaid (SSA 2102(b)(3)). Once every child is Medicaid-eligible, none can be covered by a separate CHIP program. This follows from existing CHIP law; the bill does not amend those sections. The estimate moves every modeled separate-CHIP enrollee under 26 to Medicaid on the start date. That timing is an assumption: States could move current enrollees at their next renewal. Pregnant CHIP enrollees under 26 move too, because the engine ends their CHIP coverage once they are Medicaid-eligible. That includes the CHIP option that covers a pregnancy from conception, whose beneficiary is the unborn child, so moving those enrollees is the engine's reading rather than one the CHIP statute settles. The tables report each pregnancy pathway separately from children.
 2. **The Basic Health Program loses everyone under 26.** An eligible individual must be "not eligible to enroll in the State's medicaid program" (ACA 1331(e)(1)(A)), and the bill's premium tax credit rule does not reach that section. The estimate moves every modeled Basic Health Program enrollee under 26 to Medicaid. Their take-up is an assumption: they could instead buy Marketplace coverage with a credit, or go uninsured.
 3. **Adults aged 19 to 25 who failed the community engagement requirement regain Medicaid**, at the take-up the dataset records for them. The engine applies that requirement to its adult category whatever funds the coverage, so this group includes some people in state-funded coverage.
 4. **State-funded coverage of people under 26 draws the federal match**, with no change in enrollment.
@@ -77,8 +77,8 @@ Limits of the lookback:
 - The engine does not record whether a category gives full benefits, so membership in any category stands in for full benefits.
 - The dataset has no years-since-entry input, so the five-year bar never binds, and recent lawful permanent residents count as inside the 2025 plan.
 - The engine models Medicaid-expansion CHIP inside Medicaid's child income limits. Those children are treated as inside the 2025 plan at the regular rate, in the baseline and under the bill, although CHIP pays an enhanced rate for them today. Privately insured children in that income band were not in the 2025 plan and are missed.
-- The engine does not model emergency Medicaid or the State option to cover lawfully residing children and pregnant people as routes of their own. People who qualify only through them are outside the 2025 plan in the lookback and have no federal payment for those routes in the baseline.
-- Former foster youth outside California are not modeled. Section 1115 waiver coverage is modeled only where the engine files it under a category: Wisconsin's BadgerCare adults, up to the poverty line, are in the engine's adult category, so they count as inside the 2025 plan, at the regular rate (see "Federal and state shares"). Other waiver populations are not modeled.
+- The engine does not model the State option to cover lawfully residing children and pregnant people as a route of its own. In States that take it, those people were inside the 2025 plan, so the estimate gives them 100 percent where the law gives the regular rate. Emergency Medicaid is not full benefits, so people who qualify only for it are correctly outside the 2025 plan; the engine has an emergency Medicaid eligibility variable, but nothing reads it, so the baseline carries no emergency Medicaid spending for them.
+- Former foster youth outside California are not modeled. Section 1115 waiver coverage is modeled only where the engine files it under a category: Wisconsin's BadgerCare adults, up to the poverty line, are in the engine's adult category, so they count as inside the 2025 plan, at the regular rate (see "Federal and state shares"). The engine also has its own category for the Healthier Mississippi Waiver (aged, blind and disabled), which counts as inside the 2025 plan at the regular rate. Other waiver populations are not modeled.
 
 ## Current coverage and the uninsured
 
@@ -113,7 +113,7 @@ Three features of this classification matter for reading the results:
 
 | Case | Who enrolls |
 |---|---|
-| `floor` | Nobody by choice: only the forced moves above. |
+| `floor` | Nobody by choice: only the modeled transitions above. |
 | `newborns` | The floor, plus every child under 1, each for a full year. |
 | `uninsured` | The floor, plus everyone under 26 who is uninsured. |
 | `uninsured_wide` | As `uninsured`, plus people under 26 who report Medicaid or CHIP but whom the model does not enroll. |
@@ -124,7 +124,7 @@ Three features of this classification matter for reading the results:
 
 The chain `floor`, `uninsured`, `marketplace`, `employer_25`, `employer_50`, `everyone` is nested: each case contains the one before. `newborns` and `uninsured_wide` are side cases. The household draw is seeded and shared by a household's members.
 
-No case short of `everyone` enrolls people in "reports Medicaid or CHIP" or "other coverage" (apart from `uninsured_wide`, which adds the first). In `everyone` they appear as new enrollees at the full price.
+No case short of `everyone` enrolls people in "reports Medicaid or CHIP" or "other coverage", apart from `uninsured_wide`, which adds the first, `newborns`, which adds every child under 1, and the few the floor's transitions reach. In `everyone` they appear as new enrollees at the full price.
 
 `uninsured_wide` exists because of the mismatch described above. People who report Medicaid but are not enrolled in the model have no coverage in the model's accounting. If they are in fact enrolled, their cost is already in the spending totals and `uninsured` is the right case. If the model is right that they are not, `uninsured_wide` is. The two bracket the cost of covering everyone the model does not show as covered.
 
@@ -133,7 +133,7 @@ The dataset stores a Medicaid take-up flag for every person. It was built for pe
 How to read the cases:
 
 - **`newborns` is an annualized illustration, not the first year's cost.** It enrolls every child under 1 for a full year. In the group's first year only children born on or after the start date are enrolled at birth, for the months after birth. The dataset also has fewer children under 1 than the Census Bureau projects for 2029, and its age mix differs from Census's.
-- **The other cases are enrollment scenarios, not a timeline.** Automatic enrollment reaches only children born in a State after the start date. Everyone else under 26, including children born abroad and people who move in, must apply. Over time, more people would be enrolled unless they opt out, which the bill allows only in writing and only with other coverage that meets federal requirements. None of the cases models that path, so none is a bound on a later year. `uninsured_wide` adds people who report Medicaid or CHIP but whom the model does not enroll; they have no other coverage in the model to opt out with.
+- **The other cases are enrollment scenarios, not a timeline.** Automatic enrollment reaches only children born in a State on or after the start date. Everyone else under 26, including children born abroad and people who move in, must apply. Over time, more people would be enrolled unless they opt out, which the bill allows only in writing and only with other coverage that meets federal requirements. None of the cases models that path, so none is a bound on a later year. `uninsured_wide` adds people who report Medicaid or CHIP but whom the model does not enroll; they have no other coverage in the model to opt out with.
 
 No case prices a child who is enrolled and keeps private coverage, with Medicaid paying second.
 
@@ -154,7 +154,7 @@ In states that rate premiums by family tier, the index is a share of a family pr
 **MACPAC group rates.** `medikids_group_rate` prices a person by age:
 
 - *Under 19:* the state's child-group spending per enrollee from the engine's parameters, rescaled so that the national average equals MACPAC's fiscal 2023 child benefit spending per full-year-equivalent enrollee, all enrollees ($4,040; MACStats February 2026, Exhibit 22). The engine's parameters divide fiscal 2022 spending by people ever enrolled in the year, which understates the cost of a full year. MACPAC's child group leaves out children who qualify through disability and Medicaid-expansion CHIP, and benefit spending leaves out administration and disproportionate share hospital payments.
-- *19 to 25:* MACPAC's fiscal 2023 national benefit spending per full-year-equivalent enrollee in the "other adult" group, all enrollees ($5,757). This is a choice, not the engine's grouping: the engine puts ACA adult-group members in its expansion-adult group. The national rate is used because the engine's state figures for this group have gaps. Two other MACPAC rates bracket the choice and are reported as sensitivities: the "other adult" rate for full-benefit enrollees ($6,817), which matches the bill's requirement that the new group receive full benefits, and the new adult group ($8,021). The "other adult" group is mostly parents, caretakers and pregnant people; the new adult group spans ages 19 to 64. MACPAC publishes no rate by age. Each sensitivity changes the fiscal 2023 rate only; the growth factor, enrollment and match rates stay fixed.
+- *19 to 25:* MACPAC's fiscal 2023 national benefit spending per full-year-equivalent enrollee in the "other adult" group, all enrollees ($5,757). This is a choice, not the engine's grouping: the engine puts ACA adult-group members in its expansion-adult group. The national rate is used because the engine's state figures for this group have gaps. Two higher MACPAC rates are reported as sensitivities: the "other adult" rate for full-benefit enrollees ($6,817), which matches the bill's requirement that the new group receive full benefits, and the new adult group ($8,021). The "other adult" group is mostly parents, caretakers and pregnant people; the new adult group spans ages 19 to 64. MACPAC publishes no rate by age. Each sensitivity changes the fiscal 2023 rate only; the growth factor, enrollment and match rates stay fixed.
 
 Both rates grow from fiscal 2023 to 2029 at the average annual rate CBO projects for federal spending per enrollee in the matching category over fiscal 2025 to 2029 (February 2026 Medicaid baseline), applied over all six years. The 19-to-25 rates all use the trend for CBO's traditional adult category. CBO's rate is per average monthly enrollee, including partial-benefit enrollees, and covers federal spending only; applying it to federal and state spending assumes the federal share holds steady. Carrying it back over fiscal 2023 to 2025 leaves out the 2024 and 2025 rise that the CMS factor for the engine's allocation includes, so the two prices grow differently.
 
@@ -172,7 +172,7 @@ Under current law the engine gives enrollees in its adult category the 90 percen
 
 Under the bill, people under 26 draw the rates described above; people 26 and over keep theirs.
 
-The net federal figure adds the change in federal Medicaid cost, the federal share of CHIP spending replaced, premium tax credits, and federal Basic Health Program payments. The net state figure adds the change in state Medicaid cost and the state share of CHIP replaced. The tables assert both identities in every row. Neither is a full budget effect: other programs that read Medicaid enrollment (WIC, for one), employer premiums and the taxes on them, and administrative costs are left out.
+The net federal figure adds the change in federal Medicaid cost, the federal share of CHIP spending replaced, premium tax credits, and federal Basic Health Program payments. The net state figure adds the change in state Medicaid cost and the state share of CHIP replaced. The tables reconcile both with the same sums taken a second way, per record. Neither is a full budget effect: other programs that read Medicaid enrollment (WIC, for one), employer premiums and the taxes on them, and administrative costs are left out.
 
 ## Population
 
@@ -185,10 +185,10 @@ The engine ages the dataset by scaling every household weight with total populat
 - the lookback flags, the price base and each case's enrollment set reached the run they were meant for;
 - every person has one coverage class, the classes sum to the population under 26, and the population equals its target;
 - federal plus state equals total, and each federal cost equals its cost times the federal share, for every person and every case;
-- CHIP federal plus state equals CHIP spending for every person;
-- the 90 percent rate goes only to enrollees in the ACA adult group, never in a state that covers adults by waiver;
-- in `floor`, `uninsured` and `uninsured_wide`, where no Marketplace enrollee switches, premium tax credits equal the baseline for every tax unit, and the premium-payment and subsidy flags equal it for every person (the model has no Marketplace plan-enrollment variable);
-- in `floor`, Marketplace eligibility equals the baseline for every person; Medicaid spending changes by exactly the new enrollees' cost, plus family-tier repricing at engine prices, in every state; and the federal share moves only for enrollees under 26 who are outside the 2025 plan or had no federal share at baseline;
+- CHIP federal plus state equals CHIP spending for every person, and the federal part lies between zero and the cost;
+- no state's adult category reaches above 138 percent of poverty in the reporting year; the 90 percent rate goes to somebody, only to enrollees in the ACA adult group, and never in a state that covers adults by waiver; and at baseline every matched enrollee in the ACA adult group draws it;
+- in `floor`, `uninsured` and `uninsured_wide`, where no Marketplace enrollee switches, premium tax credits equal the baseline for every tax unit, and the subsidy flag equals it for every person (the model has no Marketplace plan-enrollment variable);
+- in `floor`, Marketplace eligibility (the engine's premium-payment flag) equals the baseline for every person; Medicaid spending changes by exactly the new enrollees' cost, plus family-tier repricing at engine prices, in every state; and the federal share moves only for enrollees under 26 who are outside the 2025 plan or had no federal share at baseline;
 - every baseline enrollee under 26 in separate CHIP or the Basic Health Program, by the engine's own enrollment flags, is enrolled in Medicaid in every case, and nobody under 26 remains in either program;
 - every new enrollee is named by the case or regains Medicaid through the community engagement exception, nobody loses Medicaid, and nobody 26 or over gains it;
 - along each nested pair of cases, enrollment grows by exactly the people the larger case adds, costs rise, and premium tax credits do not rise;
@@ -208,7 +208,7 @@ Beyond the bill itself, the estimate changes four things in the baseline run and
 3. the price base for the engine's allocation;
 4. the population under 26.
 
-None is read by an eligibility, enrollment, premium tax credit or CHIP formula. A household test asserts that the first two leave those outcomes unchanged; the last two are inputs set only in the national runs.
+None is read by an eligibility, enrollment or premium tax credit formula, or by a CHIP eligibility or enrollment formula (CHIP growth does feed the engine's CHIP spending per enrollee). A household test asserts that the first two leave those outcomes unchanged; the last two are inputs set only in the national runs.
 
 ## Known limits
 
@@ -218,5 +218,6 @@ None is read by an eligibility, enrollment, premium tax credit or CHIP formula. 
 - **The dataset's age mix under 26 differs from the Census Bureau's**, before and after the population rescaling.
 - **Incomes outrun the poverty line.** Version 2.2.2 grows weighted incomes by national totals and weights by population, so incomes rise slightly too fast against the poverty line by 2029. Fewer people look eligible under current law, and more fall into the 100 percent group.
 - **Marketplace premiums after 2026 are extrapolated**, and the premium tax credit schedule is the 2026 one.
+- **Basic Health Program payments are the engine's proxy** for the 2026 CMS federal payment method: 95 percent of the premium tax credit enrollees would have received, using each household's own income instead of CMS's rate-cell averages, with the cost-sharing component at zero. Later CMS payment rules are not reflected, and the state side of Basic Health Program financing is left out.
 - **Match rates are fiscal 2026 rates.**
 - **Not modeled:** the cost of benefits the bill extends to 26, administrative costs, provider payment, state responses, births and aging over time, and the exceptions to the SSA 1903(v)(5) payment bar.

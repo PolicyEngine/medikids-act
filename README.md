@@ -9,7 +9,7 @@ S. 5037 (Sen. Andy Kim, introduced July 2026) adds a mandatory Medicaid eligibil
 - enrolls children automatically at birth, with an opt-out only for children who have other coverage;
 - keeps anyone found eligible under 26 eligible until they turn 26;
 - drops the immigration-status test under 26;
-- pays a 100 percent federal match only for people who would not have been eligible for full benefits under the State plan as it stood on January 1, 2025, and the usual match for everyone else;
+- pays a 100 percent federal match only for people who would not have been eligible for full benefits under the State plan, or a waiver of it, as it stood on January 1, 2025, and the usual match for everyone else;
 - lets people keep premium tax credits unless they enroll;
 - excepts everyone under 26 from the community engagement (work) requirements enacted in 2025.
 
@@ -34,7 +34,7 @@ For one year, 2029, an assumed reporting year with the new group in force all ye
 - **A ten-year budget window.** This is one year, with no phase-in.
 - **A per-person cost grounded in privately insured children's own spending.** Both prices are Medicaid averages.
 - Children who are enrolled automatically and keep private coverage, with Medicaid paying second.
-- The richer benefits the bill extends to 26 (early and periodic screening, and the SSA 1916 cost-sharing exemption, which now ends at 18 or, at State option, up to 21), provider payment, state responses, and administrative cost.
+- The richer benefits the bill extends to 26 (early and periodic screening, and the SSA 1916 cost-sharing exemption, which now ends at 18, with State options to extend it), provider payment, state responses, and administrative cost.
 
 [docs/method.md](docs/method.md) gives the method, every assumption with its source, the readings of the bill, the departures from the certified model, and the known limits.
 

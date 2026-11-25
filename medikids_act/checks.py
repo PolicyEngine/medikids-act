@@ -52,6 +52,24 @@ def expansion_fmap(date: str = f"{A.YEAR}-01-01") -> float:
     )
 
 
+def states_above_adult_group_limit(date: str = f"{A.YEAR}-01-01") -> list[str]:
+    """States whose ADULT income limit is above the ACA group's 138 percent on ``date``.
+
+    The current-law and bill shares give the expansion rate to the whole ADULT
+    category outside waiver states, which is right only if no state's adult
+    category reaches above 138 percent in the reporting year.
+    """
+    limits = _engine_parameter("gov/hhs/medicaid/eligibility/categories/adult/income_limit.yaml")
+    above = []
+    for state, dated in limits.items():
+        if state in ("description", "metadata") or not isinstance(dated, dict):
+            continue
+        value = _value_on(dated, date)
+        if value is not None and np.isfinite(value) and value > A.ADULT_GROUP_INCOME_LIMIT + 1e-9:
+            above.append(state)
+    return sorted(above)
+
+
 def waiver_adult_states(dates=(A.LOOKBACK_DATE, f"{A.YEAR}-01-01")) -> list[str]:
     """States whose ADULT category has an income limit below the ACA group's 138 percent.
 
@@ -210,23 +228,50 @@ def check_accounting(report: Report, name: str, run: dict) -> None:
         bool((excess <= 0).all()),
         f"{int((excess > 0).sum())} people outside single-precision rounding",
     )
+    # The identity above holds by the engine's construction; the federal part
+    # itself must lie between zero and the cost.
+    tolerance = FLOAT32_RELATIVE * np.abs(run["chip"]) + DOLLAR_TOLERANCE
+    outside = (run["chip_federal_cost"] < -tolerance) | (
+        run["chip_federal_cost"] > run["chip"] + tolerance
+    )
+    report.add(
+        f"{name}: the federal part of separate-CHIP spending lies between zero and the cost",
+        not outside.any(),
+        f"{int(outside.sum())} people outside",
+    )
     check_expansion_rate(report, name, run)
 
 
 def check_expansion_rate(report: Report, name: str, run: dict) -> None:
     """The expansion match reaches only the ACA adult group, never a waiver state's adults."""
-    expansion = run["medicaid_enrolled"] & (
-        np.abs(run["medicaid_federal_share"] - expansion_fmap()) < 1e-6
-    )
-    adult = (run["medicaid_category"].astype(str) == "ADULT") | run["medikids_lookback_adult_group"]
+    enrolled, share = run["medicaid_enrolled"], run["medicaid_federal_share"]
+    expansion = enrolled & (np.abs(share - expansion_fmap()) < 1e-6)
+    adult_category = run["medicaid_category"].astype(str) == "ADULT"
+    adult = adult_category | run["medikids_lookback_adult_group"]
     waiver = np.isin(run["state_code_str"].astype(str), waiver_adult_states())
     report.add(
-        f"{name}: the expansion match goes only to the adult group, and to nobody in a state "
-        f"that covers adults by waiver ({', '.join(waiver_adult_states())})",
-        not (expansion & ~adult).any() and not (expansion & waiver).any(),
-        f"{int((expansion & ~adult).sum())} outside the adult group; "
-        f"{int((expansion & waiver).sum())} in a waiver state",
+        f"{name}: the expansion match goes to somebody, only to the adult group, and to nobody "
+        f"in a state that covers adults by waiver ({', '.join(waiver_adult_states())})",
+        bool(expansion.any()) and not (expansion & ~adult).any() and not (expansion & waiver).any(),
+        f"{int(expansion.sum())} at the expansion rate; {int((expansion & ~adult).sum())} outside "
+        f"the adult group; {int((expansion & waiver).sum())} in a waiver state",
     )
+    if "medikids_in_aca_adult_group" not in run:
+        return  # outputs from before the variable existed
+    aca = run["medikids_in_aca_adult_group"]
+    report.add(
+        f"{name}: the ACA adult-group flag is the adult category outside waiver states",
+        bool(np.array_equal(aca, adult_category & ~waiver)),
+        f"{int((aca != (adult_category & ~waiver)).sum())} people differ",
+    )
+    if name == "baseline":
+        # Current law: every matched enrollee in the ACA adult group draws the expansion rate.
+        short = enrolled & aca & (share > 0) & ~expansion
+        report.add(
+            "baseline: every matched enrollee in the ACA adult group draws the expansion rate",
+            not short.any(),
+            f"{int(short.sum())} at another rate",
+        )
 
 
 def _unit_has_change(run: dict, base: dict) -> np.ndarray:
@@ -417,24 +462,23 @@ def check_floor(report: Report, floor: dict, base: dict, look: dict) -> None:
         abs(change - added) <= 1e-9 * scale,
         f"relative gap {abs(change - added) / scale:.2e}",
     )
-    # Everywhere, family-tier states included: the engine-priced change is the
-    # new enrollees plus the repricing of people in a family-tier unit whose
+    # In every state, family-tier states included: the engine-priced change is
+    # the new enrollees plus the repricing of people in a family-tier unit whose
     # enrollment changed, and nothing else.
     both = floor["medicaid_enrolled"] & base["medicaid_enrolled"]
     repriced = both & base["family_tier"] & _unit_has_change(floor, base)
-    change = weighted_sum(floor["medicaid_cost"], weights) - weighted_sum(
-        base["medicaid_cost"], weights
-    )
-    parts = weighted_sum(floor["medicaid_cost"], weights, new) + (
-        weighted_sum(floor["medicaid_cost"], weights, repriced)
-        - weighted_sum(base["medicaid_cost"], weights, repriced)
-    )
-    scale = max(abs(change), 1.0)
+    diff = weights * (floor["medicaid_cost"].astype(float) - base["medicaid_cost"].astype(float))
+    expected = weights * floor["medicaid_cost"].astype(float) * new + diff * repriced
+    states, index = np.unique(base["state_code_str"].astype(str), return_inverse=True)
+    change_by_state = np.bincount(index, weights=diff, minlength=len(states))
+    parts_by_state = np.bincount(index, weights=expected, minlength=len(states))
+    gap = np.abs(change_by_state - parts_by_state) / np.maximum(np.abs(change_by_state), 1.0)
     report.add(
         "floor: engine-priced Medicaid spending is the baseline plus the new enrollees plus "
         "family-tier repricing, in every state",
-        abs(change - parts) <= 1e-6 * scale,
-        f"relative gap {abs(change - parts) / scale:.2e}",
+        bool((gap <= 1e-6).all()),
+        f"{int((gap > 1e-6).sum())} of {len(states)} states off; largest relative gap "
+        f"{gap.max():.2e}",
     )
     # The only enrollees whose federal share moves without a change in enrollment
     # are people under 26 outside the 2025 plan or in state-funded coverage.
@@ -507,7 +551,8 @@ def check_provenance(report: Report, out: Path) -> None:
         meta[stage] = json.loads(path.read_text()) if path.exists() else {}
     missing = [stage for stage, m in meta.items() if not m]
     versions = sorted({m.get("code_version", "missing") for m in meta.values() if m})
-    clean = all("+uncommitted" not in v and v not in ("missing", "unknown") for v in versions)
+    # A "+" marks uncommitted changes or a tree that moved while a stage ran.
+    clean = all("+" not in v and v not in ("missing", "unknown") for v in versions)
     report.add(
         "every stage ran on the same committed code",
         not missing and len(versions) == 1 and clean,
@@ -526,6 +571,12 @@ def check_provenance(report: Report, out: Path) -> None:
 def run_checks(out: Path) -> int:
     report = Report()
     check_provenance(report, out)
+    above = states_above_adult_group_limit()
+    report.add(
+        "no state's adult category reaches above 138 percent of poverty in the reporting year",
+        not above,
+        f"states above: {above}",
+    )
     look, base = load(out, "lookback"), load(out, "baseline")
     check_inputs(report, look, base)
     check_accounting(report, "baseline", base)

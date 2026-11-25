@@ -96,11 +96,14 @@ def code_version() -> str:
     return commit + ("+uncommitted" if dirty else "")
 
 
-def provenance(dataset: str | None) -> dict:
+def provenance(dataset: str | None, code_at_start: str) -> dict:
     """What a stage ran on: package versions, the dataset file and its hash, the code commit.
 
     ``dataset`` is ``None`` for the certified bundle, or the path of a
     development sample, which is labeled as such and never reported.
+    ``code_at_start`` is ``code_version()`` taken when the stage function began,
+    before it imported the reform; if the tree has moved by the time the stage
+    finishes, the recorded version says so and the provenance check fails.
     """
     from policyengine.provenance import dataset_materialization as dm
 
@@ -124,7 +127,9 @@ def provenance(dataset: str | None) -> dict:
         "dataset_file": str(Path(path).resolve()),
         "dataset_sha256": dm.sha256_file(Path(path)),
         "year": Y,
-        "code_version": code_version(),
+        "code_version": code_at_start
+        if code_version() == code_at_start
+        else code_at_start + "+changed-during-stage",
     }
 
 
@@ -202,7 +207,8 @@ def _sum_by_state(values: np.ndarray, state: np.ndarray) -> dict[str, float]:
 
 def run_lookback(out: Path, dataset: str | None) -> None:
     """Eligibility under the rules in effect on 2025-01-01, and the price base."""
-    from medikids_act.reform import lookback_inputs, lookback_reform
+    started = code_version()
+    from medikids_act.reform import SKIPPED_AT_LOOKBACK, lookback_inputs, lookback_reform
 
     sim = make_simulation(lookback_reform(), dataset)
     log("lookback simulation built")
@@ -239,8 +245,9 @@ def run_lookback(out: Path, dataset: str | None) -> None:
         household_weight_model=_array(sim, "household_weight", entity=None).astype(float),
         weight_scale=np.float64(weight_scale),
     )
-    meta = provenance(dataset) | {
+    meta = provenance(dataset, started) | {
         "stage": "lookback",
+        "parameters_without_a_lookback_value": sorted(set(SKIPPED_AT_LOOKBACK)),
         "model_under_26_before_rescaling": model_under_26,
         "under_26_target": A.under_26_population_target(),
         "weight_scale": weight_scale,
@@ -302,6 +309,7 @@ def read_survey_columns(dataset: str | None, person_id: np.ndarray) -> dict[str,
 
 def run_baseline(out: Path, dataset: str | None) -> None:
     """Current law in the reporting year, with this analysis's cost conventions."""
+    started = code_version()
     from medikids_act.reform import current_law_reform
 
     look = np.load(out / "lookback.npz")
@@ -320,7 +328,7 @@ def run_baseline(out: Path, dataset: str | None) -> None:
     arrays["coverage_measured"] = record["measured"]
     arrays["coverage_imputed"] = record["imputed"]
     np.savez_compressed(out / "baseline.npz", **arrays)
-    meta = provenance(dataset) | {
+    meta = provenance(dataset, started) | {
         "stage": "baseline",
         "uninsured_rate_by_cell": record["uninsured_rate_by_cell"],
     }
@@ -330,6 +338,7 @@ def run_baseline(out: Path, dataset: str | None) -> None:
 
 def run_case(case: str, out: Path, dataset: str | None) -> None:
     """The bill under one switching case."""
+    started = code_version()
     from medikids_act.reform import READINGS, medikids_reform
 
     look = np.load(out / "lookback.npz")
@@ -352,7 +361,10 @@ def run_case(case: str, out: Path, dataset: str | None) -> None:
     arrays = _collect(sim, extra_person_float=alternative)
     arrays["case_enrolls"] = enrolls
     np.savez_compressed(out / f"case_{case}.npz", **arrays)
-    meta = provenance(dataset) | {"stage": f"case_{case}", "description": C.DESCRIPTIONS[case]}
+    meta = provenance(dataset, started) | {
+        "stage": f"case_{case}",
+        "description": C.DESCRIPTIONS[case],
+    }
     (out / f"case_{case}.json").write_text(json.dumps(meta, indent=1))
     log(f"case {case} written")
 

@@ -6,10 +6,10 @@ beside it. None is a result of this analysis.
 
 from __future__ import annotations
 
-# The bill's new group starts two years after enactment. The 120th Congress
-# convenes in January 2027, so 2029 is the earliest calendar year in which the
-# group could be in force. Results are for that one year, with the bill treated
-# as in force for all of it.
+# The bill's new group starts two years after enactment: enactment during 2027
+# would start it part-way through 2029, and enactment before the end of 2026
+# would allow a 2028 start. 2029 is an assumed reporting year, with the bill
+# treated as in force for all of it; it is not a forecast of the first year.
 YEAR = 2029
 
 # Section 1902(a)(10)(A)(i)(X) as the bill would add it: "individuals who have

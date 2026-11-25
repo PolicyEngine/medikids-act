@@ -4,7 +4,10 @@
 
 Writes ``table_*.csv`` and ``summary.md`` to the results folder. Every figure
 is a weighted sum, or a difference of weighted sums, over the outputs of the
-runs for the scenario it describes. Nothing here scales, interpolates or
+runs for the scenario it describes, with two exceptions: the 19-to-25 rate
+sensitivities rescale that age group's part of a case's change (exact, because
+the rate is one national figure), and the separate-CHIP spending benchmark
+divides the growth assumption back out. Nothing here interpolates or
 extrapolates from one run to another.
 
 Units: people are counts; money is dollars a year in the reporting year.
@@ -74,7 +77,17 @@ def coverage_table(base: dict) -> pd.DataFrame:
     reported = coverage == int(Coverage.MEDICAID_REPORTED)
     at_interview = base["has_medicaid_health_coverage_at_interview"]
     row("Reports Medicaid or CHIP: at the interview", reported & at_interview, "memo")
-    row("Reports Medicaid or CHIP: for the prior year only", reported & ~at_interview, "memo")
+    items_present = base["interview_items_present"]
+    row(
+        "Reports Medicaid or CHIP: for the prior year, not at the interview",
+        reported & ~at_interview & items_present,
+        "memo",
+    )
+    row(
+        "Reports Medicaid or CHIP: for the prior year, interview item not asked",
+        reported & ~items_present,
+        "memo",
+    )
     chip = coverage == int(Coverage.CHIP)
     items = base["interview_items_present"]
     row("Separate CHIP class: on records with the interview items", chip & items, "memo")
@@ -111,9 +124,9 @@ def eligibility_table(base: dict, look: dict) -> pd.DataFrame:
         & ~eligible
         & barred,
         "... of whom neither": under_26 & ~eligible & ~chip & ~barred,
-        "Outside the 2025-01-01 State plan (would draw the 100 percent match)": under_26
+        "Outside the 2025-01-01 State plan (100 percent match if enrolled, primary reading)": under_26
         & outside_plan,
-        "... of whom enrolled in Medicaid at baseline (state-funded coverage)": under_26
+        "... of whom enrolled in Medicaid at baseline (state-funded, or added since 2025)": under_26
         & outside_plan
         & base["medicaid_enrolled"],
         "Inside the 2025-01-01 State plan": under_26 & ~outside_plan,
@@ -191,29 +204,47 @@ def cases_table(base: dict, runs: dict[str, dict]) -> pd.DataFrame:
             row[f"{pricing}_net_state_change"] = (
                 row[f"{pricing}_medicaid_state_change"] + row["chip_state_change"]
             )
-        _assert_ledger(row)
+        _assert_ledger(row, run, base)
         rows.append(row)
     return pd.DataFrame(rows)
 
 
-def _assert_ledger(row: dict) -> None:
-    """The published columns must add up as their definitions say."""
-    scale = max(abs(row["chip_change"]), 1.0)
-    if (
-        abs(row["chip_federal_change"] + row["chip_state_change"] - row["chip_change"])
-        > 1e-6 * scale
-    ):
-        raise AssertionError(f"{row['case']}: CHIP federal plus state does not equal CHIP")
-    for pricing in PRICINGS:
-        gross = row[f"{pricing}_medicaid_change"]
-        federal = row[f"{pricing}_net_federal_change"] - (
-            row["chip_federal_change"]
-            + row["premium_tax_credit_change"]
-            + row["basic_health_program_change"]
-        )
-        state = row[f"{pricing}_net_state_change"] - row["chip_state_change"]
-        if abs(federal + state - gross) > 1e-6 * max(abs(gross), 1.0):
-            raise AssertionError(f"{row['case']}: the {pricing} net columns do not reconcile")
+def _assert_ledger(row: dict, run: dict, base: dict) -> None:
+    """Reconcile the published columns with sums taken a second, independent way.
+
+    The columns above are differences of program totals. Here each figure is
+    rebuilt from per-record changes (person arrays with person weights,
+    tax-unit arrays with tax-unit weights) in a single sum, and for engine
+    pricing the state change is read from the saved state-cost array rather
+    than taken as gross minus federal. A wrong weight, array or sign in either
+    path makes them disagree.
+    """
+    weights, unit_weights = base["person_weight"], base["tax_unit_weight"]
+
+    def delta(name: str) -> np.ndarray:
+        return np.asarray(run[name], dtype=float) - np.asarray(base[name], dtype=float)
+
+    def close(a: float, b: float) -> bool:
+        return abs(a - b) <= 1e-6 * max(abs(a), abs(b), 1.0)
+
+    case = row["case"]
+    chip = weighted_sum(delta("chip_federal_cost") + delta("chip_state_cost"), weights)
+    if not close(chip, row["chip_change"]):
+        raise AssertionError(f"{case}: CHIP federal plus state does not equal CHIP")
+    units = weighted_sum(
+        delta("tax_unit__assigned_aca_ptc") + delta("tax_unit__basic_health_program"),
+        unit_weights,
+    )
+    for pricing, (cost, federal_cost) in PRICINGS.items():
+        federal = weighted_sum(delta(federal_cost) + delta("chip_federal_cost"), weights) + units
+        if not close(federal, row[f"{pricing}_net_federal_change"]):
+            raise AssertionError(f"{case}: the {pricing} net federal column does not reconcile")
+        state = weighted_sum(delta(cost) - delta(federal_cost) + delta("chip_state_cost"), weights)
+        if not close(state, row[f"{pricing}_net_state_change"]):
+            raise AssertionError(f"{case}: the {pricing} net state column does not reconcile")
+    saved_state = weighted_sum(delta("medicaid_state_cost"), weights)
+    if not close(saved_state, row["engine_medicaid_state_change"]):
+        raise AssertionError(f"{case}: engine state Medicaid does not match the saved state cost")
 
 
 def adult_rate_table(base: dict, runs: dict[str, dict]) -> pd.DataFrame:
@@ -318,12 +349,14 @@ def floor_table(base: dict, floor: dict, look: dict) -> pd.DataFrame:
     matched = base["medicaid_federal_share"] > 0
     inside_plan = look["lookback_eligible"]
     chip_class = new & (coverage == int(Coverage.CHIP))
-    pregnancy = np.char.startswith(base["chip_category"].astype(str), "PREGNANT")
+    category = base["chip_category"].astype(str)
+    standard = category == "PREGNANT_STANDARD"
+    from_conception = category == "PREGNANT_FCEP"
     groups = {
-        "New: separate-CHIP children moved to Medicaid": chip_class & ~pregnancy,
-        "New: separate-CHIP pregnancy coverage (standard and from conception) moved to Medicaid": (
-            chip_class & pregnancy
-        ),
+        "New: separate-CHIP children moved to Medicaid": chip_class & ~standard & ~from_conception,
+        "New: separate-CHIP standard pregnancy coverage moved to Medicaid": chip_class & standard,
+        "New: separate-CHIP from-conception pregnancy coverage moved to Medicaid": chip_class
+        & from_conception,
         "New: Basic Health Program enrollees moved to Medicaid": new
         & (coverage == int(Coverage.BASIC_HEALTH)),
         "New: regain Medicaid through the community engagement exception": new
