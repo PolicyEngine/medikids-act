@@ -704,8 +704,12 @@ def summary_problem(out: Path) -> str | None:
     failed = [c for c in json.loads(checks_path.read_text()) if not c["passed"]]
     if failed:
         return f"{len(failed)} saved checks failed"
-    stage_files = [*out.glob("*.npz"), *out.glob("lookback.json"), *out.glob("baseline.json"),
-                   *out.glob("case_*.json")]
+    stage_files = [
+        *out.glob("*.npz"),
+        *out.glob("lookback.json"),
+        *out.glob("baseline.json"),
+        *out.glob("case_*.json"),
+    ]
     if any(path.stat().st_mtime > checks_path.stat().st_mtime for path in stage_files):
         return "checks.json is older than a stage output; rerun the checks stage"
     return None
