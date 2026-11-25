@@ -29,16 +29,18 @@ SIDE_CASES = ("newborns", "uninsured_wide")
 CASES = ("floor", *SIDE_CASES, *CHAIN[1:])
 
 DESCRIPTIONS = {
-    "floor": "Nobody chooses to enroll. Only the moves the law forces: separate-CHIP "
-    "children and Basic Health Program enrollees under 26 move to Medicaid.",
-    "newborns": "The floor, plus every child under 1 (automatic enrollment at birth).",
+    "floor": "Nobody chooses to enroll. Modeled transitions only: separate-CHIP and Basic "
+    "Health Program enrollees under 26 move to Medicaid on the start date, and people under 26 "
+    "barred by the community engagement requirement regain Medicaid at their stored take-up.",
+    "newborns": "The floor, plus every child under 1, each for a full year (an annualized "
+    "illustration of enrollment at birth, not the first year's cost).",
     "uninsured": "The floor, plus everyone under 26 who is uninsured.",
     "uninsured_wide": "As uninsured, plus people under 26 who report Medicaid or CHIP but "
     "whom the model does not enroll: everyone the model does not show as covered.",
     "marketplace": "As above, plus everyone under 26 with Marketplace coverage.",
-    "employer_25": "As above, plus the under-26 members of a random quarter of households "
-    "with employer coverage.",
-    "employer_50": "As above, with half of those households.",
+    "employer_25": "As above, plus people under 26 in the employer class who live in a random "
+    "quarter of households.",
+    "employer_50": "As above, with half of households.",
     "everyone": "Everyone under 26 enrolls.",
 }
 

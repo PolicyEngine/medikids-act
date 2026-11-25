@@ -41,6 +41,10 @@ STATE_FUNDED = ("ny_undocumented.parent", "ny_undocumented.child")
 FOSTER_YOUTH = "ca_foster.adult"
 
 
+# Covered through the BadgerCare section 1115 waiver, not the ACA adult group.
+WISCONSIN_WAIVER_ADULT = "wi_adult.adult"
+
+
 def fmap(run, state: str) -> float:
     """The state's regular match rate in the reporting year, from the engine."""
     rates = run.sim.tax_benefit_system.parameters.gov.hhs.medicaid.cost_share.fmap

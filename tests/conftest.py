@@ -55,6 +55,9 @@ HOUSEHOLDS = {
     "dc_adult": ("DC", [("adult", 23, 31_000, "CITIZEN")]),
     # California former foster youth, above every income limit.
     "ca_foster": ("CA", [("adult", 22, 60_000, "CITIZEN")]),
+    # Wisconsin adult below the poverty line: covered through the BadgerCare
+    # section 1115 waiver, which the engine files under its ADULT category.
+    "wi_adult": ("WI", [("adult", 23, 9_000, "CITIZEN")]),
 }
 EXTRA_INPUTS = {"ca_foster.adult": {"was_in_foster_care": True}}
 
@@ -156,7 +159,7 @@ def lookback_inputs(situation):
     sim = _simulation(situation, lookback_reform())
     inputs = build(
         np.asarray(sim.calculate("medikids_lookback_title_xix_eligible", Y)),
-        sim.calculate("medicaid_category", Y).decode_to_str(),
+        np.asarray(sim.calculate("medikids_in_aca_adult_group", Y)),
         np.asarray(sim.calculate("medicaid_income_level", Y)),
     )
     del sim

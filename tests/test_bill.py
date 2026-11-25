@@ -120,6 +120,9 @@ def test_enrolling_takes_a_child_out_of_the_marketplace(current_law, bill_everyo
         ("dc_adult.adult", REGULAR, REGULAR, REGULAR, REGULAR),
         # Former foster youth: a title XIX group at the regular match.
         ("ca_foster.adult", REGULAR, REGULAR, REGULAR, REGULAR),
+        # Wisconsin waiver adult: in the 2025 plan but not the ACA adult group, so
+        # the regular match under every reading.
+        ("wi_adult.adult", REGULAR, REGULAR, REGULAR, REGULAR),
     ],
 )
 def test_match_rates_under_each_reading(
@@ -142,7 +145,13 @@ def test_matched_enrollees_inside_the_2025_plan_keep_their_rate(current_law, bil
     # change the match of someone it does not touch.
     before = current_law.person("medicaid_federal_share")
     after = bill_nobody.person("medicaid_federal_share")
-    for person in ("va_parent.parent", "va_parent.child", "ca_child.child", "ca_foster.adult"):
+    for person in (
+        "va_parent.parent",
+        "va_parent.child",
+        "ca_child.child",
+        "ca_foster.adult",
+        "wi_adult.adult",
+    ):
         assert current_law.person("medicaid_enrolled")[person]
         assert before[person] > 0
         assert after[person] == pytest.approx(before[person])

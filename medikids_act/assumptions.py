@@ -48,7 +48,16 @@ NHE_CHIP_PER_ENROLLEE = {2024: 4_236, 2029: 5_784}
 # benefit spending per full-year-equivalent enrollee, fiscal 2023, all
 # enrollees, federal plus state:
 # https://www.macpac.gov/wp-content/uploads/2026/02/MACSTATS_Feb2026_WEB_508.pdf
+# Exhibit 22, Total row. "All enrollees" includes people with limited benefits;
+# the full-benefit figures are $4,057 (child), $6,817 (other adult) and $8,099
+# (new adult group). The estimate prices ages 19 to 25 at the all-enrollee
+# "other adult" rate and reports the other two adult rates as sensitivities.
 MACPAC_FY2023_PER_FYE = {"child": 4_040, "other_adult": 5_757, "new_adult_group": 8_021}
+MACPAC_FY2023_ADULT_SENSITIVITIES = {
+    "other_adult_all_enrollees": 5_757,
+    "other_adult_full_benefit": 6_817,
+    "new_adult_group_all_enrollees": 8_021,
+}
 MACPAC_BASE_FISCAL_YEAR = 2023
 
 # CBO, Baseline Projections: Medicaid (February 2026), average federal spending

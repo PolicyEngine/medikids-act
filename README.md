@@ -17,10 +17,10 @@ The bill raises no revenue.
 
 ## What this estimate covers
 
-For one year, 2029 (the earliest the new group could start, if the bill were enacted in 2027):
+For one year, 2029, an assumed reporting year with the new group in force all year (it starts two years after enactment, so enactment during 2027 would start it part-way through 2029):
 
 - people under 26 by current coverage: Medicaid or CHIP, employer, Marketplace, other, uninsured;
-- how many become newly eligible, and how many fall outside the 2025 State plan and so would draw the 100 percent match;
+- how many become newly eligible, and how many fall outside the 2025 State plan and so would draw the 100 percent match under the primary reading;
 - the gross Medicaid cost under stated switching cases, from "nobody chooses to enroll" to "everyone under 26 enrolls", priced two ways;
 - the federal and state split under the bill's two match rates, with three points the bill's text leaves open shown as alternatives;
 - premium tax credits, separate-CHIP spending and Basic Health Program payments replaced.
@@ -34,7 +34,7 @@ For one year, 2029 (the earliest the new group could start, if the bill were ena
 - **A ten-year budget window.** This is one year, with no phase-in.
 - **A per-person cost grounded in privately insured children's own spending.** Both prices are Medicaid averages.
 - Children who are enrolled automatically and keep private coverage, with Medicaid paying second.
-- The richer benefits the bill extends to 26 (early and periodic screening, no cost sharing), provider payment, state responses, and administrative cost.
+- The richer benefits the bill extends to 26 (early and periodic screening, and the SSA 1916 cost-sharing exemption, which now ends at 18 or, at State option, up to 21), provider payment, state responses, and administrative cost.
 
 [docs/method.md](docs/method.md) gives the method, every assumption with its source, the readings of the bill, the departures from the certified model, and the known limits.
 

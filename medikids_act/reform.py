@@ -153,6 +153,35 @@ class medikids_lookback_adult_group(Variable):
     documentation = "Input, computed in the lookback run. These people keep the expansion match."
 
 
+class medikids_in_aca_adult_group(Variable):
+    value_type = bool
+    entity = Person
+    definition_period = YEAR
+    label = "In the ACA adult group (SSA 1902(a)(10)(A)(i)(VIII))"
+    documentation = (
+        "The engine's ADULT Medicaid category where it is the ACA adult group, the group "
+        "SSA 1905(y) matches at the expansion rate. Wisconsin covers adults below the "
+        "poverty line through a section 1115 waiver, which the engine also puts in its "
+        "ADULT category (income limit 100 percent of the poverty line); those adults are "
+        "matched at the state's regular rate. A state whose adult income limit is below "
+        "the ACA group's 138 percent is therefore treated as covering adults by waiver."
+    )
+    reference = (
+        "https://www.law.cornell.edu/uscode/text/42/1396d#y",
+        (
+            "https://www.medicaid.gov/medicaid/section-1115-demonstrations/downloads/"
+            "wi-badgercare-reform-dmnstn-aprvl-evltn-dsgn-01022026.pdf"
+        ),
+    )
+
+    def formula(person, period, parameters):
+        category = person("medicaid_category", period)
+        state = person.household("state_code", period)
+        limits = parameters(period).gov.hhs.medicaid.eligibility.categories.adult.income_limit
+        aca_state = limits[state] >= A.ADULT_GROUP_INCOME_LIMIT - 1e-9
+        return (category == category.possible_values.ADULT) & aca_state
+
+
 class medikids_case_enrolls(Variable):
     value_type = bool
     entity = Person
@@ -192,13 +221,14 @@ def _current_law_share(person, period, parameters):
     through a state-funded route. Federal law pays nothing for them
     (42 U.S.C. 1396b(v)), so this sets their share to zero, as later
     policyengine-us versions do. It also gives the regular match to former
-    foster youth, whom the engine leaves at zero.
+    foster youth, whom the engine leaves at zero, and the regular match to
+    Wisconsin's waiver adults, to whom the engine gives the expansion match
+    (see ``medikids_in_aca_adult_group``).
     """
-    category = person("medicaid_category", period)
     matched = _matched_under_current_law(person, period)
     expansion_fmap = parameters(period).gov.hhs.medicaid.cost_share.expansion_fmap
     return select(
-        [~matched, category == category.possible_values.ADULT],
+        [~matched, person("medikids_in_aca_adult_group", period)],
         [0, expansion_fmap],
         default=_regular_fmap(person, period, parameters),
     )
@@ -239,14 +269,13 @@ def _bill_share(person, period, parameters, reading="primary"):
     regular = _regular_fmap(person, period, parameters)
     expansion_fmap = parameters(period).gov.hhs.medicaid.cost_share.expansion_fmap
     inside_2025_plan = person("medikids_lookback_eligible", period)
-    category = person("medicaid_category", period)
     # A person with a matched group today keeps that group's rate: the bill
     # does not move anyone between existing groups. The 2025 group matters only
     # for people current law has since cut off.
     matched_now = _matched_under_current_law(person, period)
     in_adult_group = where(
         matched_now,
-        category == category.possible_values.ADULT,
+        person("medikids_in_aca_adult_group", period),
         person("medikids_lookback_adult_group", period),
     )
     rate = where(matched_now, current, where(in_adult_group, expansion_fmap, regular))
@@ -352,8 +381,9 @@ class medikids_group_rate(Variable):
         "parameters (MACPAC benefit spending divided by enrollment), rescaled so that the "
         "national average equals MACPAC's fiscal 2023 child spending per full-year-"
         "equivalent enrollee. Ages 19 to 25: MACPAC's fiscal 2023 national rate for the "
-        "other-adult group, the group the engine assigns to young adults. Both are grown "
-        "to the reporting year. Zero at 26 and over."
+        "'other adult' group, all enrollees. That is a choice, not the engine's grouping: "
+        "the engine puts ACA adult-group members in its expansion-adult group. Both are "
+        "grown to the reporting year. Zero at 26 and over."
     )
     reference = "https://www.macpac.gov/wp-content/uploads/2026/02/MACSTATS_Feb2026_WEB_508.pdf"
 
@@ -491,6 +521,7 @@ _SHARED_VARIABLES = (
     medikids_existing_group_eligible,
     medikids_lookback_eligible,
     medikids_lookback_adult_group,
+    medikids_in_aca_adult_group,
     medikids_case_enrolls,
     medikids_group_rate,
     medikids_group_rate_cost,
@@ -537,9 +568,12 @@ def medikids_reform() -> type[Reform]:
 def pin_to_lookback_date(parameters) -> list[str]:
     """Pin Medicaid and CHIP eligibility parameters to their 2025-01-01 values.
 
-    Returns the names of parameters that had no value on that date and so were
-    left alone (for example the community engagement parameters, first dated
-    2027, whose on/off switch is pinned to off).
+    Returns the names of parameters with no value dated on or before that date,
+    which are left alone. The engine backdates the first value of most
+    parameters, so this list can be empty even for rules first enacted later
+    (the community engagement requirement is pinned to off through its on/off
+    switch). The state folders are pinned whole, so a few parameters outside
+    Medicaid are pinned as well.
     """
     pin = instant(A.LOOKBACK_DATE)
     skipped = []
@@ -579,21 +613,22 @@ class medikids_lookback_title_xix_eligible(Variable):
         return (in_category | person("ca_ffyp_eligible", period)) & federal
 
 
-def lookback_inputs(eligible, category, income_level) -> dict[str, np.ndarray]:
+def lookback_inputs(eligible, in_aca_adult_group, income_level) -> dict[str, np.ndarray]:
     """The two inputs the bill's match rates read, from the lookback run's outputs.
 
-    ``eligible`` is ``medikids_lookback_title_xix_eligible``, ``category`` the
-    Medicaid category names and ``income_level`` ``medicaid_income_level``,
-    all from a simulation under ``lookback_reform``. A person counts as in the
-    ACA adult group only up to that group's income limit: the expansion match
-    does not reach people a state covered above it.
+    ``eligible`` is ``medikids_lookback_title_xix_eligible``,
+    ``in_aca_adult_group`` is ``medikids_in_aca_adult_group`` (the engine's
+    ADULT category outside waiver states) and ``income_level``
+    ``medicaid_income_level``, all from a simulation under ``lookback_reform``.
+    A person counts as in the ACA adult group only up to that group's income
+    limit: the expansion match does not reach people a state covered above it.
     """
     eligible = np.asarray(eligible, dtype=bool)
-    in_adult_category = np.asarray(category).astype(str) == "ADULT"
+    in_aca_adult_group = np.asarray(in_aca_adult_group, dtype=bool)
     in_income_range = np.asarray(income_level, dtype=float) <= A.ADULT_GROUP_INCOME_LIMIT
     return {
         "medikids_lookback_eligible": eligible,
-        "medikids_lookback_adult_group": eligible & in_adult_category & in_income_range,
+        "medikids_lookback_adult_group": eligible & in_aca_adult_group & in_income_range,
     }
 
 
@@ -605,6 +640,7 @@ def lookback_reform() -> type[Reform]:
             self.update_variable(medikids_under_26)
             self.update_variable(medikids_federal_immigration_eligible)
             self.update_variable(medikids_lookback_title_xix_eligible)
+            self.update_variable(medikids_in_aca_adult_group)
 
             def pin(parameters):
                 pin_to_lookback_date(parameters)

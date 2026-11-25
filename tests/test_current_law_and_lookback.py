@@ -14,6 +14,7 @@ from tests.helpers import (
     COVERAGE_VARIABLES,
     FOSTER_YOUTH,
     STATE_FUNDED,
+    WISCONSIN_WAIVER_ADULT,
     fmap,
 )
 
@@ -66,7 +67,7 @@ def test_current_law_share_matches_the_engine_for_everyone_else(engine, current_
         engine.person("medicaid_federal_share"),
     )
     for person in ours:
-        if person not in (*STATE_FUNDED, FOSTER_YOUTH):
+        if person not in (*STATE_FUNDED, FOSTER_YOUTH, WISCONSIN_WAIVER_ADULT):
             assert ours[person] == pytest.approx(theirs[person])
 
 
@@ -77,6 +78,25 @@ def test_former_foster_youth_draw_the_regular_match(engine, current_law):
     assert current_law.person("medicaid_federal_share")[FOSTER_YOUTH] == pytest.approx(
         fmap(current_law, "CA")
     )
+
+
+def test_wisconsin_waiver_adults_draw_the_regular_match(engine, current_law, lookback):
+    # BadgerCare covers adults up to the poverty line under a section 1115
+    # waiver, and the engine files them under its ADULT category. SSA 1905(y)
+    # pays the expansion rate only for the ACA adult group, so the state's
+    # regular match applies.
+    person = WISCONSIN_WAIVER_ADULT
+    assert engine.person("medicaid_category")[person] == "ADULT"
+    assert engine.person("medicaid_enrolled")[person]
+    assert engine.person("medicaid_federal_share")[person] == pytest.approx(0.9)
+    assert current_law.person("medikids_in_aca_adult_group")[person] is False
+    assert current_law.person("medikids_in_aca_adult_group")["va_parent.parent"] is True
+    assert current_law.person("medicaid_federal_share")[person] == pytest.approx(
+        fmap(current_law, "WI")
+    )
+    assert lookback.person("medicaid_category")[person] == "ADULT"
+    assert lookback.person("medikids_in_aca_adult_group")[person] is False
+    assert lookback.person("medikids_in_aca_adult_group")["ca_adult.adult"] is True
 
 
 def test_federal_immigration_test_uses_the_reporting_year_list(current_law):
@@ -137,6 +157,7 @@ def test_lookback_pins_eligibility_rules_but_not_the_poverty_line(engine, lookba
         ("tx_undocumented.child", False),  # fails the federal immigration test
         ("ny_undocumented.child", False),  # state-funded coverage is not the title XIX plan
         ("tx_older.adult", False),
+        ("wi_adult.adult", True),  # BadgerCare waiver adults are in the title XIX plan
     ],
 )
 def test_lookback_eligibility(lookback, person, expected):

@@ -9,11 +9,13 @@ checks print counts of violations and tolerances, never result totals.
 
 from __future__ import annotations
 
+import importlib.util
 import itertools
 import json
 from pathlib import Path
 
 import numpy as np
+import yaml
 from microdf import MicroSeries
 
 from medikids_act import assumptions as A
@@ -24,6 +26,52 @@ from medikids_act.reform import READINGS
 DOLLAR_TOLERANCE = 0.01  # per person or per tax unit
 RELATIVE_TOLERANCE = 1e-6
 FLOAT32_RELATIVE = 1e-6
+
+# The stage files every reported run must have, all from one commit and one dataset.
+STAGES = ("lookback", "baseline", *(f"case_{case}" for case in C.CASES))
+
+
+def _engine_parameter(relative: str) -> dict:
+    """An engine parameter file, read as YAML without importing the engine."""
+    spec = importlib.util.find_spec("policyengine_us")
+    root = Path(next(iter(spec.submodule_search_locations)))
+    return yaml.safe_load((root / "parameters" / relative).read_text())
+
+
+def _value_on(dated: dict, date: str):
+    """The value in force on ``date`` from a {date: value} mapping."""
+    earlier = sorted((str(d), v) for d, v in dated.items() if str(d) <= date)
+    return earlier[-1][1] if earlier else None
+
+
+def expansion_fmap(date: str = f"{A.YEAR}-01-01") -> float:
+    return float(
+        _value_on(
+            _engine_parameter("gov/hhs/medicaid/cost_share/expansion_fmap.yaml")["values"], date
+        )
+    )
+
+
+def waiver_adult_states(dates=(A.LOOKBACK_DATE, f"{A.YEAR}-01-01")) -> list[str]:
+    """States whose ADULT category has an income limit below the ACA group's 138 percent.
+
+    The engine puts adults such a state covers by waiver (Wisconsin) in its
+    ADULT category; SSA 1905(y) does not match them at the expansion rate.
+    """
+    limits = _engine_parameter("gov/hhs/medicaid/eligibility/categories/adult/income_limit.yaml")
+    states = set()
+    for state, dated in limits.items():
+        if state in ("description", "metadata") or not isinstance(dated, dict):
+            continue
+        for date in dates:
+            value = _value_on(dated, date)
+            if (
+                value is not None
+                and np.isfinite(value)
+                and value < A.ADULT_GROUP_INCOME_LIMIT - 1e-9
+            ):
+                states.add(state)
+    return sorted(states)
 
 
 def load(out: Path, stage: str) -> dict[str, np.ndarray]:
@@ -153,6 +201,32 @@ def check_accounting(report: Report, name: str, run: dict) -> None:
         off <= DOLLAR_TOLERANCE,
         f"largest amount ${off:.4f}",
     )
+    parts = run["chip_federal_cost"] + run["chip_state_cost"]
+    excess = np.abs(parts - run["chip"]) - (
+        FLOAT32_RELATIVE * np.abs(run["chip"]) + DOLLAR_TOLERANCE
+    )
+    report.add(
+        f"{name}: federal plus state equals total separate-CHIP spending for every person",
+        bool((excess <= 0).all()),
+        f"{int((excess > 0).sum())} people outside single-precision rounding",
+    )
+    check_expansion_rate(report, name, run)
+
+
+def check_expansion_rate(report: Report, name: str, run: dict) -> None:
+    """The expansion match reaches only the ACA adult group, never a waiver state's adults."""
+    expansion = run["medicaid_enrolled"] & (
+        np.abs(run["medicaid_federal_share"] - expansion_fmap()) < 1e-6
+    )
+    adult = (run["medicaid_category"].astype(str) == "ADULT") | run["medikids_lookback_adult_group"]
+    waiver = np.isin(run["state_code_str"].astype(str), waiver_adult_states())
+    report.add(
+        f"{name}: the expansion match goes only to the adult group, and to nobody in a state "
+        f"that covers adults by waiver ({', '.join(waiver_adult_states())})",
+        not (expansion & ~adult).any() and not (expansion & waiver).any(),
+        f"{int((expansion & ~adult).sum())} outside the adult group; "
+        f"{int((expansion & waiver).sum())} in a waiver state",
+    )
 
 
 def _unit_has_change(run: dict, base: dict) -> np.ndarray:
@@ -183,6 +257,16 @@ def check_case(report: Report, case: str, run: dict, base: dict, look: dict) -> 
         f"{case}: no separate-CHIP or Basic Health Program enrollee under 26 is left uncovered",
         bool(moved.any()) and bool(enrolled[moved].all()),
         f"{int((~enrolled[moved]).sum())} of {int(moved.sum())} not enrolled in Medicaid",
+    )
+    raw = (base["chip_enrolled"] | base["basic_health_program_enrolled"]) & under_26
+    left = int((~enrolled[raw]).sum())
+    still = int((run["chip_enrolled"] | run["basic_health_program_enrolled"])[under_26].sum())
+    report.add(
+        f"{case}: every person under 26 enrolled in separate CHIP or the Basic Health Program at "
+        "baseline is enrolled in Medicaid, and nobody under 26 remains in either program",
+        bool(raw.any()) and left == 0 and still == 0,
+        f"{left} of {int(raw.sum())} not enrolled in Medicaid; {still} still in CHIP or the "
+        "Basic Health Program",
     )
     report.add(
         f"{case}: everyone the case names is enrolled",
@@ -301,7 +385,7 @@ def check_no_marketplace_switch(report: Report, case: str, run: dict, base: dict
     )
 
 
-def check_floor(report: Report, floor: dict, base: dict) -> None:
+def check_floor(report: Report, floor: dict, base: dict, look: dict) -> None:
     changed = int((floor["pays_aca_premium"] != base["pays_aca_premium"]).sum())
     report.add(
         "floor: Marketplace eligibility equals the baseline for every person",
@@ -332,6 +416,36 @@ def check_floor(report: Report, floor: dict, base: dict) -> None:
         "floor: group-rate Medicaid spending is the baseline plus the new enrollees",
         abs(change - added) <= 1e-9 * scale,
         f"relative gap {abs(change - added) / scale:.2e}",
+    )
+    # Everywhere, family-tier states included: the engine-priced change is the
+    # new enrollees plus the repricing of people in a family-tier unit whose
+    # enrollment changed, and nothing else.
+    both = floor["medicaid_enrolled"] & base["medicaid_enrolled"]
+    repriced = both & base["family_tier"] & _unit_has_change(floor, base)
+    change = weighted_sum(floor["medicaid_cost"], weights) - weighted_sum(
+        base["medicaid_cost"], weights
+    )
+    parts = weighted_sum(floor["medicaid_cost"], weights, new) + (
+        weighted_sum(floor["medicaid_cost"], weights, repriced)
+        - weighted_sum(base["medicaid_cost"], weights, repriced)
+    )
+    scale = max(abs(change), 1.0)
+    report.add(
+        "floor: engine-priced Medicaid spending is the baseline plus the new enrollees plus "
+        "family-tier repricing, in every state",
+        abs(change - parts) <= 1e-6 * scale,
+        f"relative gap {abs(change - parts) / scale:.2e}",
+    )
+    # The only enrollees whose federal share moves without a change in enrollment
+    # are people under 26 outside the 2025 plan or in state-funded coverage.
+    under_26 = base["age"] < A.AGE_LIMIT
+    moved = both & (np.abs(floor["medicaid_federal_share"] - base["medicaid_federal_share"]) > 1e-6)
+    allowed = under_26 & ((base["medicaid_federal_share"] <= 0) | ~look["lookback_eligible"])
+    report.add(
+        "floor: the federal share moves, for people enrolled in both runs, only for people under "
+        "26 outside the 2025 plan or in state-funded coverage",
+        not (moved & ~allowed).any(),
+        f"{int((moved & ~allowed).sum())} other people's share moved; {int(moved.sum())} moved in all",
     )
 
 
@@ -386,18 +500,26 @@ def check_nesting(report: Report, runs: dict[str, dict], base: dict) -> None:
 
 
 def check_provenance(report: Report, out: Path) -> None:
-    """Every stage must come from the same committed code, so no stale file is mixed in."""
-    versions = {}
-    for path in sorted(out.glob("*.json")):
-        if path.name == "checks.json":
-            continue
-        versions[path.stem] = json.loads(path.read_text()).get("code_version", "missing")
-    distinct = sorted(set(versions.values()))
-    clean = all("+uncommitted" not in v and v not in ("missing", "unknown") for v in distinct)
+    """Every stage must come from the same committed code and the same certified file."""
+    meta = {}
+    for stage in STAGES:
+        path = out / f"{stage}.json"
+        meta[stage] = json.loads(path.read_text()) if path.exists() else {}
+    missing = [stage for stage, m in meta.items() if not m]
+    versions = sorted({m.get("code_version", "missing") for m in meta.values() if m})
+    clean = all("+uncommitted" not in v and v not in ("missing", "unknown") for v in versions)
     report.add(
         "every stage ran on the same committed code",
-        len(distinct) == 1 and clean,
-        f"{len(versions)} stages; code versions: {[v[:12] + v[40:] for v in distinct]}",
+        not missing and len(versions) == 1 and clean,
+        f"{len(meta) - len(missing)} of {len(STAGES)} stage files; missing {missing}; "
+        f"code versions: {[v[:12] + v[40:] for v in versions]}",
+    )
+    hashes = sorted({m.get("dataset_sha256", "missing") for m in meta.values() if m})
+    certified = all(m.get("dataset_certified") is True for m in meta.values() if m)
+    report.add(
+        "every stage ran on the same certified dataset file",
+        not missing and len(hashes) == 1 and "missing" not in hashes and certified,
+        f"dataset hashes: {[h[:12] for h in hashes]}; all certified: {certified}",
     )
 
 
@@ -422,7 +544,7 @@ def run_checks(out: Path) -> int:
         if case in runs:
             check_no_marketplace_switch(report, case, runs[case], base)
     if "floor" in runs:
-        check_floor(report, runs["floor"], base)
+        check_floor(report, runs["floor"], base, look)
     check_nesting(report, runs, base)
     (out / "checks.json").write_text(json.dumps(report.rows, indent=1))
     print(f"\n{len(report.rows) - report.failed} passed, {report.failed} failed")

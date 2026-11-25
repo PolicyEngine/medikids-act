@@ -31,6 +31,8 @@ PRICINGS = {
     "group_rate": ("medikids_group_rate_cost", "medikids_group_rate_federal_cost"),
     "engine": ("medicaid_cost", "medicaid_federal_cost"),
 }
+# Benchmarks that measure the same thing as the model over the same window.
+LIKE_FOR_LIKE = ("population_under_26", "population_under_19", "population_19_to_25")
 
 
 def _band(age: np.ndarray, low: int, high: int) -> np.ndarray:
@@ -69,6 +71,23 @@ def coverage_table(base: dict) -> pd.DataFrame:
     row("Uninsured, measured at the interview", uninsured & base["coverage_measured"], "memo")
     row("Uninsured, imputed at the measured rate", uninsured & base["coverage_imputed"], "memo")
     row("People on records with the interview items", base["interview_items_present"], "memo")
+    reported = coverage == int(Coverage.MEDICAID_REPORTED)
+    at_interview = base["has_medicaid_health_coverage_at_interview"]
+    row("Reports Medicaid or CHIP: at the interview", reported & at_interview, "memo")
+    row("Reports Medicaid or CHIP: for the prior year only", reported & ~at_interview, "memo")
+    chip = coverage == int(Coverage.CHIP)
+    items = base["interview_items_present"]
+    row("Separate CHIP class: on records with the interview items", chip & items, "memo")
+    row(
+        "Separate CHIP class: on records with the items, uninsured at the interview",
+        chip & items & base["uninsured_at_interview"],
+        "memo",
+    )
+    row(
+        "Separate CHIP class: reported Medicaid or CHIP for the prior year",
+        chip & base["medicaid_last_year"],
+        "memo",
+    )
     return pd.DataFrame(rows)
 
 
@@ -172,7 +191,65 @@ def cases_table(base: dict, runs: dict[str, dict]) -> pd.DataFrame:
             row[f"{pricing}_net_state_change"] = (
                 row[f"{pricing}_medicaid_state_change"] + row["chip_state_change"]
             )
+        _assert_ledger(row)
         rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _assert_ledger(row: dict) -> None:
+    """The published columns must add up as their definitions say."""
+    scale = max(abs(row["chip_change"]), 1.0)
+    if (
+        abs(row["chip_federal_change"] + row["chip_state_change"] - row["chip_change"])
+        > 1e-6 * scale
+    ):
+        raise AssertionError(f"{row['case']}: CHIP federal plus state does not equal CHIP")
+    for pricing in PRICINGS:
+        gross = row[f"{pricing}_medicaid_change"]
+        federal = row[f"{pricing}_net_federal_change"] - (
+            row["chip_federal_change"]
+            + row["premium_tax_credit_change"]
+            + row["basic_health_program_change"]
+        )
+        state = row[f"{pricing}_net_state_change"] - row["chip_state_change"]
+        if abs(federal + state - gross) > 1e-6 * max(abs(gross), 1.0):
+            raise AssertionError(f"{row['case']}: the {pricing} net columns do not reconcile")
+
+
+def adult_rate_table(base: dict, runs: dict[str, dict]) -> pd.DataFrame:
+    """Gross and federal Medicaid change at each MACPAC rate for ages 19 to 25.
+
+    The 19-to-25 group rate is one national figure, so the change at another
+    rate is the change at the primary rate with the 19-to-25 part rescaled.
+    The child rate, enrollment and federal shares are held fixed.
+    """
+    age, weights = base["age"], base["person_weight"]
+    young = _band(age, A.CHILD_AGE_LIMIT, A.AGE_LIMIT)
+    rate = base["medikids_group_rate"][young]
+    if not np.allclose(rate, rate[0], rtol=1e-6):
+        raise AssertionError("the 19-to-25 group rate is not one national figure")
+    primary = A.MACPAC_FY2023_PER_FYE["other_adult"]
+    rows = []
+    for case, run in runs.items():
+        gross = run["medikids_group_rate_cost"] - base["medikids_group_rate_cost"]
+        federal = run["medikids_group_rate_federal_cost"] - base["medikids_group_rate_federal_cost"]
+        total, total_federal = weighted_sum(gross, weights), weighted_sum(federal, weights)
+        part, part_federal = (
+            weighted_sum(gross, weights, young),
+            weighted_sum(federal, weights, young),
+        )
+        for name, value in A.MACPAC_FY2023_ADULT_SENSITIVITIES.items():
+            factor = value / primary
+            rows.append(
+                {
+                    "case": case,
+                    "adult_rate": name,
+                    "fy2023_rate": value,
+                    "rate_in_reporting_year": float(rate[0]) * factor,
+                    "medicaid_change": total + (factor - 1) * part,
+                    "medicaid_federal_change": total_federal + (factor - 1) * part_federal,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -240,8 +317,13 @@ def floor_table(base: dict, floor: dict, look: dict) -> pd.DataFrame:
     both = floor["medicaid_enrolled"] & base["medicaid_enrolled"]
     matched = base["medicaid_federal_share"] > 0
     inside_plan = look["lookback_eligible"]
+    chip_class = new & (coverage == int(Coverage.CHIP))
+    pregnancy = np.char.startswith(base["chip_category"].astype(str), "PREGNANT")
     groups = {
-        "New: separate-CHIP enrollees moved to Medicaid": new & (coverage == int(Coverage.CHIP)),
+        "New: separate-CHIP children moved to Medicaid": chip_class & ~pregnancy,
+        "New: separate-CHIP pregnancy coverage (standard and from conception) moved to Medicaid": (
+            chip_class & pregnancy
+        ),
         "New: Basic Health Program enrollees moved to Medicaid": new
         & (coverage == int(Coverage.BASIC_HEALTH)),
         "New: regain Medicaid through the community engagement exception": new
@@ -385,7 +467,8 @@ def benchmark_table(base: dict, look: dict) -> pd.DataFrame:
                 "benchmark_year": benchmark.year,
                 "benchmark_definition": benchmark.definition,
                 "benchmark_source": benchmark.source,
-                "model_over_benchmark": value / benchmark.value,
+                # A ratio only where both sides measure the same thing over the same window.
+                "model_over_benchmark": value / benchmark.value if key in LIKE_FOR_LIKE else np.nan,
             }
         )
     rows.append(
@@ -504,6 +587,19 @@ def render_summary(tables: dict[str, pd.DataFrame], meta: dict, checks: list | N
         )
     lines += [
         "",
+        "## Ages 19 to 25 at each MACPAC adult rate: Medicaid change at group rates ($ billions)",
+        "",
+        "| Case | Adult rate | FY2023 rate | Rate in reporting year | Medicaid | Federal |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
+    for _, r in tables["adult_rate"].iterrows():
+        lines.append(
+            f"| {r['case']} | {r['adult_rate']} | {r['fy2023_rate']:,.0f} | "
+            f"{r['rate_in_reporting_year']:,.0f} | {_billions(r['medicaid_change'])} | "
+            f"{_billions(r['medicaid_federal_change'])} |"
+        )
+    lines += [
+        "",
         "## Average cost per enrollee in the everyone case (dollars)",
         "",
         "| Group | Age | People (m) | Group rate | Engine | Average federal share |",
@@ -554,9 +650,10 @@ def render_summary(tables: dict[str, pd.DataFrame], meta: dict, checks: list | N
         if pd.isna(r.get("benchmark")):
             lines.append(f"| {r['key']} | {r['model']:,.0f} | | | {r['model_definition']} | |")
             continue
+        ratio = "" if pd.isna(r["model_over_benchmark"]) else f"{r['model_over_benchmark']:.2f}"
         lines.append(
             f"| {r['key']} | {r['model']:,.0f} | {r['benchmark']:,.0f} | "
-            f"{r['model_over_benchmark']:.2f} | {r['model_definition']} | "
+            f"{ratio} | {r['model_definition']} | "
             f"{r['benchmark_definition']} ({r['benchmark_year']}; {r['benchmark_source']}) |"
         )
     return "\n".join(lines) + "\n"
@@ -570,6 +667,7 @@ def write_tables(out: Path) -> None:
         "eligibility": eligibility_table(base, look),
         "cases": cases_table(base, runs),
         "readings": readings_table(base, runs),
+        "adult_rate": adult_rate_table(base, runs),
         "benchmarks": benchmark_table(base, look),
         "by_state": by_state_table(base, runs),
     }

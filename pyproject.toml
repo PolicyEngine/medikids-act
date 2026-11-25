@@ -5,6 +5,7 @@ description = "Draft first PolicyEngine estimate of the MediKids Act (S. 5037): 
 requires-python = "==3.13.*"
 dependencies = [
     "policyengine[us]==6.20.3",
+    "pyyaml>=6",
 ]
 
 [dependency-groups]

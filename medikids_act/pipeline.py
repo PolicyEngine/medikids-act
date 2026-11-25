@@ -50,6 +50,7 @@ PERSON_BOOL = (
     # Inputs, read back so the checks can confirm they reached the run.
     "medikids_lookback_eligible",
     "medikids_lookback_adult_group",
+    "medikids_in_aca_adult_group",
 )
 PERSON_FLOAT = (
     "age",
@@ -66,7 +67,7 @@ PERSON_FLOAT = (
     "chip_state_cost",
     "medicaid_slcsp_state_denominator",
 )
-PERSON_ENUM = ("state_code_str", "medicaid_category", "immigration_status")
+PERSON_ENUM = ("state_code_str", "medicaid_category", "chip_category", "immigration_status")
 TAX_UNIT_FLOAT = ("assigned_aca_ptc", "aca_ptc", "basic_health_program")
 
 
@@ -95,17 +96,33 @@ def code_version() -> str:
     return commit + ("+uncommitted" if dirty else "")
 
 
-def provenance() -> dict:
+def provenance(dataset: str | None) -> dict:
+    """What a stage ran on: package versions, the dataset file and its hash, the code commit.
+
+    ``dataset`` is ``None`` for the certified bundle, or the path of a
+    development sample, which is labeled as such and never reported.
+    """
+    from policyengine.provenance import dataset_materialization as dm
+
     manifest_path = Path(
         metadata.distribution("policyengine").locate_file("policyengine/data/bundle/manifest.json")
     )
     us = json.loads(manifest_path.read_text())["data_releases"]["us"]
+    if dataset is None:
+        path = require_local_dataset()
+        name, build, certified = us["default_dataset"], us["build_id"], True
+    else:
+        path = Path(dataset)
+        name, build, certified = path.name, "development sample (not reportable)", False
     return {
         "versions": {
             p: metadata.version(p) for p in ("policyengine", "policyengine-us", "policyengine-core")
         },
-        "dataset": us["default_dataset"],
-        "data_build": us["build_id"],
+        "dataset": name,
+        "data_build": build,
+        "dataset_certified": certified,
+        "dataset_file": str(Path(path).resolve()),
+        "dataset_sha256": dm.sha256_file(Path(path)),
         "year": Y,
         "code_version": code_version(),
     }
@@ -193,8 +210,9 @@ def run_lookback(out: Path, dataset: str | None) -> None:
     age = _array(sim, "age")
     eligible = _array(sim, "medikids_lookback_title_xix_eligible").astype(bool)
     category = _array(sim, "medicaid_category")
+    aca_adult = _array(sim, "medikids_in_aca_adult_group").astype(bool)
     enrolled = _array(sim, "medicaid_enrolled").astype(bool)
-    flags = lookback_inputs(eligible, category, _array(sim, "medicaid_income_level"))
+    flags = lookback_inputs(eligible, aca_adult, _array(sim, "medicaid_income_level"))
     index = _array(sim, "medicaid_slcsp_cost_index_filled").astype(float)
     base_weight = _array(sim, "person_weight", DATA_YEAR).astype(float)
     # Per-enrollee prices rest on each state's spending total divided by the
@@ -212,6 +230,7 @@ def run_lookback(out: Path, dataset: str | None) -> None:
         lookback_eligible=flags["medikids_lookback_eligible"],
         lookback_adult_group=flags["medikids_lookback_adult_group"],
         lookback_category=category,
+        lookback_in_aca_adult_group=aca_adult,
         lookback_separate_chip=_array(sim, "is_chip_eligible").astype(bool),
         lookback_enrolled=enrolled,
         cost_index=index.astype(np.float32),
@@ -220,7 +239,7 @@ def run_lookback(out: Path, dataset: str | None) -> None:
         household_weight_model=_array(sim, "household_weight", entity=None).astype(float),
         weight_scale=np.float64(weight_scale),
     )
-    meta = provenance() | {
+    meta = provenance(dataset) | {
         "stage": "lookback",
         "model_under_26_before_rescaling": model_under_26,
         "under_26_target": A.under_26_population_target(),
@@ -301,7 +320,7 @@ def run_baseline(out: Path, dataset: str | None) -> None:
     arrays["coverage_measured"] = record["measured"]
     arrays["coverage_imputed"] = record["imputed"]
     np.savez_compressed(out / "baseline.npz", **arrays)
-    meta = provenance() | {
+    meta = provenance(dataset) | {
         "stage": "baseline",
         "uninsured_rate_by_cell": record["uninsured_rate_by_cell"],
     }
@@ -333,7 +352,7 @@ def run_case(case: str, out: Path, dataset: str | None) -> None:
     arrays = _collect(sim, extra_person_float=alternative)
     arrays["case_enrolls"] = enrolls
     np.savez_compressed(out / f"case_{case}.npz", **arrays)
-    meta = provenance() | {"stage": f"case_{case}", "description": C.DESCRIPTIONS[case]}
+    meta = provenance(dataset) | {"stage": f"case_{case}", "description": C.DESCRIPTIONS[case]}
     (out / f"case_{case}.json").write_text(json.dumps(meta, indent=1))
     log(f"case {case} written")
 
