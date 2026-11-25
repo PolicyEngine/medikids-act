@@ -12,3 +12,7 @@ logs/
 data/
 *.npz
 *.h5
+# Table and run-record names the pipeline writes, wherever --out points.
+table_*.csv
+/summary.md
+case_*.json

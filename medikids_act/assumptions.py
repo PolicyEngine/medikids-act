@@ -6,10 +6,10 @@ beside it. None is a result of this analysis.
 
 from __future__ import annotations
 
-# The bill's new group starts two years after enactment: enactment during 2027
-# would start it part-way through 2029, and enactment before the end of 2026
-# would allow a 2028 start. 2029 is an assumed reporting year, with the bill
-# treated as in force for all of it; it is not a forecast of the first year.
+# The bill's new group starts two years after enactment, so 2029 is a full year
+# of it only if the bill is enacted by January 1, 2027; enactment later in 2027
+# starts it part-way through 2029. 2029 is a reporting convention, with the bill
+# treated as in force for all of it; it is neither the first year nor the steady state.
 YEAR = 2029
 
 # Section 1902(a)(10)(A)(i)(X) as the bill would add it: "individuals who have

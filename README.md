@@ -17,7 +17,7 @@ The bill raises no revenue.
 
 ## What this estimate covers
 
-For one year, 2029, an assumed reporting year with the new group in force all year (it starts two years after enactment, so enactment during 2027 would start it part-way through 2029):
+For one year, 2029, an assumed reporting year with the new group in force all year (it starts two years after enactment, so 2029 is a full year of it only if the bill is enacted by January 1, 2027):
 
 - people under 26 by current coverage: Medicaid or CHIP, employer, Marketplace, other, uninsured;
 - how many become newly eligible, and how many fall outside the 2025 State plan and so would draw the 100 percent match under the primary reading;

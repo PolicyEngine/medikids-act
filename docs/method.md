@@ -4,7 +4,7 @@ Draft, under review. This note describes how the estimate is built. It contains 
 
 ## What is estimated
 
-The estimate covers one calendar year, 2029, with the bill treated as in force all year. That is an assumed reporting year, not a forecast of the first year. The bill's new group starts two years after enactment: enactment during 2027 would start it part-way through 2029, and enactment before the end of 2026 would allow a 2028 start. The estimate is static: nobody's income, work or residence changes.
+The estimate covers one calendar year, 2029, with the bill treated as in force all year. That is a reporting convention. Neither the first year nor the steady state (every child enrolled from birth) is estimated: each case is a full-year enrollment assumption for 2029. The bill's new group starts two years after enactment, so 2029 is a full year of it only if the bill is enacted by January 1, 2027; enactment later in 2027 starts it part-way through 2029. The estimate is static: nobody's income, work or residence changes.
 
 How many people would leave private coverage for Medicaid is the largest unknown, and the model cannot predict it. The estimate therefore reports a set of switching cases, each a stated assumption about who enrolls.
 
@@ -26,7 +26,7 @@ How many people would leave private coverage for Medicaid is the largest unknown
 | Eligibility alone does not block the premium tax credit | 2(d), new IRC 36B(c)(2)(D) | The Marketplace gate (`gov.aca.ineligible_coverage`) reads existing-group eligibility. Enrollment still blocks, through the engine's list of qualifying coverage. |
 | 100 percent match for people outside the 2025 State plan | 2(f), new SSA 1905(ll) | `medicaid_federal_share` is replaced. See "Who draws the 100 percent match". |
 | Automatic enrollment at birth; eligibility continues to 26 | 2(b), 2(c) | Not modeled over time. The switching cases stand in for them. |
-| Early and periodic screening benefits to 26; the SSA 1916 cost-sharing exemptions extended to 26 | 2(h), 2(i) | Not modeled. SSA 1916A, which the bill leaves alone, still allows some cost sharing. |
+| Early and periodic screening, diagnostic and treatment (EPSDT) services and inpatient psychiatric services for people under 21, both extended to 26; the SSA 1916 cost-sharing exemptions extended to 26 | 2(h), 2(i) | Not modeled. The two benefits likely raise cost per enrollee at ages 21 to 25 above MACPAC's adult rates. SSA 1916A, which the bill leaves alone, still allows some cost sharing. |
 
 The model treats a person who is eligible only through the new group as "eligible only under (X)" for the premium tax credit rule, including people who meet an existing group's income test but fail its immigration test. The bill's immigration amendments could be read to make those people eligible through the existing group as well. Few of them could claim the credit in 2029 either way: from 2027 the engine's credit excludes most of the immigration statuses that fail the Medicaid test.
 
@@ -132,8 +132,8 @@ The dataset stores a Medicaid take-up flag for every person. It was built for pe
 
 How to read the cases:
 
-- **`newborns` is an annualized illustration, not the first year's cost.** It enrolls every child under 1 for a full year. In the group's first year only children born on or after the start date are enrolled at birth, for the months after birth. The dataset also has fewer children under 1 than the Census Bureau projects for 2029, and its age mix differs from Census's.
-- **The other cases are enrollment scenarios, not a timeline.** Automatic enrollment reaches only children born in a State on or after the start date. Everyone else under 26, including children born abroad and people who move in, must apply. Over time, more people would be enrolled unless they opt out, which the bill allows only in writing and only with other coverage that meets federal requirements. None of the cases models that path, so none is a bound on a later year. `uninsured_wide` adds people who report Medicaid or CHIP but whom the model does not enroll; they have no other coverage in the model to opt out with.
+- **`newborns` is an annualized illustration, not the first year's cost.** It enrolls every child under 1 for a full year. In the group's first year only children born on or after the start date are enrolled automatically at birth, for the months after birth. The dataset also has fewer children under 1 than the Census Bureau projects for 2029, and its age mix differs from Census's.
+- **The other cases are enrollment scenarios, not a timeline.** Automatic enrollment reaches only children born in a State on or after the start date, and the State must let a parent disenroll such a child in writing if the child has other coverage that meets federal requirements. Everyone else under 26 enrolls by application or by State transfer (as from separate CHIP), unless already enrolled; children born abroad and people who move in must apply. Once enrolled, a person stays eligible until 26 without income redeterminations (section 2(c)), so enrollment would build up over time. None of the cases models that path, so none is a bound on a later year. `uninsured_wide` adds people who report Medicaid or CHIP but whom the model does not enroll; they have no other coverage in the model to opt out with.
 
 No case prices a child who is enrolled and keeps private coverage, with Medicaid paying second.
 
@@ -187,7 +187,7 @@ The engine ages the dataset by scaling every household weight with total populat
 - federal plus state equals total, and each federal cost equals its cost times the federal share, for every person and every case;
 - CHIP federal plus state equals CHIP spending for every person, and the federal part lies between zero and the cost;
 - no state's adult category reaches above 138 percent of poverty in the reporting year; the 90 percent rate goes to somebody, only to enrollees in the ACA adult group, and never in a state that covers adults by waiver; and at baseline every matched enrollee in the ACA adult group draws it;
-- in `floor`, `uninsured` and `uninsured_wide`, where no Marketplace enrollee switches, premium tax credits equal the baseline for every tax unit, and the subsidy flag equals it for every person (the model has no Marketplace plan-enrollment variable);
+- in `floor`, `uninsured` and `uninsured_wide`, where no modeled premium tax credit recipient switches (a few people who report Marketplace coverage regain Medicaid through the community engagement exception), premium tax credits equal the baseline for every tax unit, and the subsidy flag equals it for every person (the model has no Marketplace plan-enrollment variable);
 - in `floor`, Marketplace eligibility (the engine's premium-payment flag) equals the baseline for every person; Medicaid spending changes by exactly the new enrollees' cost, plus family-tier repricing at engine prices, in every state; and the federal share moves only for enrollees under 26 who are outside the 2025 plan or had no federal share at baseline;
 - every baseline enrollee under 26 in separate CHIP or the Basic Health Program, by the engine's own enrollment flags, is enrolled in Medicaid in every case, and nobody under 26 remains in either program;
 - every new enrollee is named by the case or regains Medicaid through the community engagement exception, nobody loses Medicaid, and nobody 26 or over gains it;

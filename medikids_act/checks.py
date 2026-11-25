@@ -414,7 +414,7 @@ def check_case(report: Report, case: str, run: dict, base: dict, look: dict) -> 
 
 
 def check_no_marketplace_switch(report: Report, case: str, run: dict, base: dict) -> None:
-    """Where no Marketplace enrollee switches, the credit must not move at all."""
+    """Where no modeled premium tax credit recipient switches, the credit must not move at all."""
     credits = base["tax_unit__assigned_aca_ptc"]
     gap = _max_abs(run["tax_unit__assigned_aca_ptc"], credits)
     report.add(
@@ -590,7 +590,7 @@ def run_checks(out: Path) -> int:
         report.add(f"{case}: same people in the same order as the baseline", same_people, "")
         check_accounting(report, case, runs[case])
         check_case(report, case, runs[case], base, look)
-    # No Marketplace enrollee switches in these cases, so the credit must not move.
+    # No modeled premium tax credit recipient switches in these cases, so the credit must not move.
     for case in ("floor", "uninsured", "uninsured_wide"):
         if case in runs:
             check_no_marketplace_switch(report, case, runs[case], base)
