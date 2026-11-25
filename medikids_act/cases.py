@@ -72,10 +72,9 @@ def transfers(age: np.ndarray, coverage: np.ndarray) -> np.ndarray:
     happen on the start date.
 
     CHIP pregnancy coverage: standard pregnancy coverage covers the pregnant
-    person; in the from-conception option the beneficiary is the unborn child,
-    and the State tests the pregnant person's Medicaid eligibility. The
-    estimate assumes every such enrollee under 26 moves to Medicaid; the code
-    does not derive that move.
+    person; in the from-conception option the beneficiary is the unborn child.
+    The estimate assumes every such enrollee under 26 moves to Medicaid; the
+    code does not derive that move.
 
     Basic Health Program: a person eligible to enroll in Medicaid is not an
     eligible individual for the program (ACA 1331(e)(1)(A)), so enrollees
