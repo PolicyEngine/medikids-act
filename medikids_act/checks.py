@@ -575,6 +575,9 @@ def check_provenance(report: Report, out: Path) -> None:
 
 
 def run_checks(out: Path) -> int:
+    # A new checks run invalidates the old summary, whatever its result; the
+    # tables stage writes a new one only from passing checks.
+    (out / "summary.md").unlink(missing_ok=True)
     report = Report()
     check_provenance(report, out)
     above = states_above_adult_group_limit()

@@ -264,7 +264,7 @@ def _current_law_share(person, period, parameters):
 #     whether the person had another full-benefit pathway under the 2025 rules.
 #     A person in the adult group today whose 2025 group gave full benefits
 #     (the Virginia parent fixture) gets 100 percent here although that reading
-#     of the bill would keep her current rate. The engine assigns one category
+#     of the bill would keep their current rate. The engine assigns one category
 #     per person, so overlaps between the adult group and other groups cannot
 #     be seen.
 # adult_group_regular

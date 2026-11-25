@@ -695,13 +695,16 @@ def render_summary(tables: dict[str, pd.DataFrame], meta: dict, checks: list | N
 def summary_problem(out: Path) -> str | None:
     """Why the summary may not be written from ``out``, or None if it may.
 
-    It needs a checks.json with no failed row that is at least as new as every
-    stage output (the .npz arrays and the stage records).
+    It needs a checks.json with at least one row, no failed row, and a time at
+    least as new as every stage output (the .npz arrays and the stage records).
     """
     checks_path = out / "checks.json"
     if not checks_path.exists():
         return "no checks.json; run the checks stage first"
-    failed = [c for c in json.loads(checks_path.read_text()) if not c["passed"]]
+    rows = json.loads(checks_path.read_text())
+    if not rows:
+        return "checks.json has no check rows"
+    failed = [c for c in rows if c.get("passed") is not True]
     if failed:
         return f"{len(failed)} saved checks failed"
     stage_files = [

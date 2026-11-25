@@ -19,6 +19,12 @@ def test_missing_checks_blocks_summary(tmp_path):
     assert "no checks.json" in summary_problem(tmp_path)
 
 
+def test_empty_checks_block_summary(tmp_path):
+    _write(tmp_path / "baseline.npz", mtime=1_000)
+    _write(tmp_path / "checks.json", "[]", mtime=2_000)
+    assert summary_problem(tmp_path) == "checks.json has no check rows"
+
+
 def test_failed_check_blocks_summary(tmp_path):
     _write(tmp_path / "baseline.npz", mtime=1_000)
     rows = [

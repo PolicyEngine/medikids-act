@@ -63,15 +63,24 @@ def household_draw(household_id: np.ndarray, seed: int = A.SWITCH_SEED) -> np.nd
 def transfers(age: np.ndarray, coverage: np.ndarray) -> np.ndarray:
     """People the floor moves to Medicaid: modeled transitions, partly assumed.
 
-    A child eligible for Medicaid cannot be a "targeted low-income child" for
-    separate CHIP (SSA 2110(b)(1)(C)), and a person eligible to enroll in
-    Medicaid is not an eligible individual for the Basic Health Program
-    (ACA 1331(e)(1)). So both programs lose their eligibility under 26 once
-    the new group starts. The estimate moves every such enrollee to Medicaid
-    on the start date: for ordinary separate-CHIP children the move follows
-    from existing CHIP law (its timing is assumed); for Basic Health Program
-    enrollees and CHIP pregnancy coverage, including the from-conception
-    option whose beneficiary is the unborn child, the move is assumed.
+    Ordinary separate CHIP: a child found eligible for Medicaid cannot be a
+    "targeted low-income child" (SSA 2110(b)(1)(C)), and States must enroll
+    children found eligible for Medicaid in Medicaid (SSA 2102(b)(3)). The new
+    group makes these children eligible for Medicaid, so existing law moves
+    them once they are found eligible. Being found eligible, leaving CHIP and
+    enrolling in Medicaid are separate steps; the estimate assumes all three
+    happen on the start date.
+
+    CHIP pregnancy coverage: standard pregnancy coverage covers the pregnant
+    person; in the from-conception option the beneficiary is the unborn child,
+    and the State tests the pregnant person's Medicaid eligibility. The
+    estimate assumes every such enrollee under 26 moves to Medicaid; the code
+    does not derive that move.
+
+    Basic Health Program: a person eligible to enroll in Medicaid is not an
+    eligible individual for the program (ACA 1331(e)(1)(A)), so enrollees
+    under 26 lose that eligibility once the new group starts. The estimate
+    assumes they all take up Medicaid.
     """
     age = np.asarray(age)
     coverage = np.asarray(coverage)
